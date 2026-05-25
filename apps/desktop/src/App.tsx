@@ -503,6 +503,7 @@ type AiConfig = {
     | "Groq"
     | "Gemini"
     | "Anthropic"
+    | "NVIDIA NIM"
     | "Custom API";
   model: string;
   endpoint: string;
@@ -582,6 +583,10 @@ const providerDefaults: Record<AiConfig["provider"], { model: string; endpoint: 
     model: "claude-sonnet-4-20250514",
     endpoint: "https://api.anthropic.com/v1/messages",
   },
+  "NVIDIA NIM": {
+    model: "meta/llama-3.1-8b-instruct",
+    endpoint: "https://integrate.api.nvidia.com/v1/chat/completions",
+  },
   "Custom API": {
     model: "custom-model",
     endpoint: "http://127.0.0.1:1234/v1/chat/completions",
@@ -639,6 +644,9 @@ function isProviderEndpointCompatible(provider: AiConfig["provider"], endpoint: 
   }
   if (provider === "Groq") {
     return normalized.includes("groq.com");
+  }
+  if (provider === "NVIDIA NIM") {
+    return normalized.includes("integrate.api.nvidia.com");
   }
   if (provider === "Anthropic") {
     return normalized.includes("anthropic.com");
@@ -1738,6 +1746,7 @@ function mapAiConfig(settings?: BackendSettings): AiConfig {
     "Groq",
     "Gemini",
     "Anthropic",
+    "NVIDIA NIM",
     "Custom API",
   ].includes(settings.aiProvider ?? "")
     ? (settings.aiProvider as AiConfig["provider"])
@@ -5501,6 +5510,7 @@ function SettingsView({
                     <option>Groq</option>
                     <option>Gemini</option>
                     <option>Anthropic</option>
+                    <option>NVIDIA NIM</option>
                     <option>Custom API</option>
                   </select>
                 </label>
