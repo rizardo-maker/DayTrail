@@ -240,6 +240,13 @@ type BackendAiUsageSummary = {
   outputCount: number;
 };
 
+type BackendFileUsage = {
+  name: string;
+  context: string | null;
+  durationMs: number;
+  events: number;
+};
+
 type BackendAppUsageSummary = {
   totalDurationMs: number;
   apps: Array<{
@@ -255,6 +262,7 @@ type BackendAppUsageSummary = {
       examples: string[];
     }>;
     aiTools: BackendAiToolUsage[];
+    files: BackendFileUsage[];
   }>;
 };
 
@@ -756,20 +764,24 @@ function formatTimeRange(startedAt: number, endedAt: number) {
 }
 
 function formatDuration(durationMs = 0) {
-  const minutes = Math.max(0, Math.round(durationMs / 60_000));
+  const totalSeconds = Math.max(0, Math.round(durationMs / 1_000));
 
-  if (minutes < 1) {
-    return "<1m";
+  if (totalSeconds < 60) {
+    return totalSeconds === 0 ? "0s" : `${totalSeconds}s`;
   }
 
-  const hours = Math.floor(minutes / 60);
-  const remainder = minutes % 60;
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
 
   if (hours === 0) {
-    return `${minutes}m`;
+    return seconds === 0 ? `${totalMinutes}m` : `${totalMinutes}m ${seconds}s`;
   }
 
-  return remainder === 0 ? `${hours}h` : `${hours}h ${remainder}m`;
+  if (minutes === 0 && seconds === 0) return `${hours}h`;
+  if (seconds === 0) return `${hours}h ${minutes}m`;
+  return `${hours}h ${minutes}m`;
 }
 
 function compactDisplayLabel(value?: string | null) {
@@ -972,6 +984,45 @@ function aiToolLabelForEvent(event: BackendSourceEvent) {
 
 function uniqueValues(values: Array<string | null | undefined>) {
   return [...new Set(values.filter((value): value is string => Boolean(value)))];
+}
+
+// ── App icon with real macOS bundle icon, falls back to colored letter ──────
+
+const appIconCache = new Map<string, string | null>();
+
+function AppIcon({ appName, className = "sidebar-app-icon" }: { appName: string; className?: string }) {
+  const [iconSrc, setIconSrc] = useState<string | null>(() => {
+    const cached = appIconCache.get(appName);
+    return cached !== undefined ? cached : null;
+  });
+  const [loading, setLoading] = useState(() => !appIconCache.has(appName));
+
+  useEffect(() => {
+    if (appIconCache.has(appName)) return;
+    let cancelled = false;
+    invokeTauri<string | null>("get_app_icon", { appName }).then((src) => {
+      if (!cancelled) {
+        appIconCache.set(appName, src ?? null);
+        setIconSrc(src ?? null);
+        setLoading(false);
+      }
+    }).catch(() => {
+      if (!cancelled) {
+        appIconCache.set(appName, null);
+        setLoading(false);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [appName]);
+
+  if (!loading && iconSrc) {
+    return <img alt={appName} className={`${className} app-icon-img`} src={iconSrc} />;
+  }
+  return (
+    <span className={className} style={{ background: appColor(appName) }}>
+      {appName.slice(0, 1).toUpperCase()}
+    </span>
+  );
 }
 
 function appColor(appName: string) {
@@ -1787,6 +1838,17 @@ export default function App() {
     setPermissionStatus(permissionStatusMessage(summary));
   }
 
+  async function triggerBrowserAutomation() {
+    setPermissionStatus("Requesting browser automation access...");
+    const summary = await invokeTauri<BackendCapturePermissionSummary>(
+      "trigger_browser_automation_prompt",
+    );
+    if (summary) {
+      setPermissionSummary(summary);
+      setPermissionStatus(permissionStatusMessage(summary));
+    }
+  }
+
   async function restartDayTrail() {
     setPermissionStatus("Restarting DayTrail...");
     const restarted = await invokeTauri<boolean>("restart_app");
@@ -2388,6 +2450,7 @@ export default function App() {
           onRefresh={loadCapturePermissions}
           onRestart={restartDayTrail}
           onResetAccessibility={resetAndRequestAccessibility}
+          onTriggerBrowserAutomation={triggerBrowserAutomation}
           permissionStatus={permissionStatus}
           summary={permissionSummary}
         />
@@ -2438,9 +2501,7 @@ export default function App() {
                 title={`${app.app} - ${formatDuration(app.durationMs)}`}
                 type="button"
               >
-                <span className="sidebar-app-icon" style={{ background: appColor(app.app) }}>
-                  {app.app.slice(0, 1).toUpperCase()}
-                </span>
+                <AppIcon appName={app.app} />
                 <span>
                   <strong>{app.app}</strong>
                   <em>{formatDuration(app.durationMs)}</em>
@@ -2607,6 +2668,7 @@ export default function App() {
               onOpenSavedNotes={() => setActiveView("memory")}
               onRefreshCapturePermissions={loadCapturePermissions}
               onRestartApp={restartDayTrail}
+              onTriggerBrowserAutomation={triggerBrowserAutomation}
               onRestoreDatabase={restoreDatabase}
               permissionStatus={permissionStatus}
               permissionSummary={permissionSummary}
@@ -2667,6 +2729,7 @@ function PermissionSetupView({
   onRefresh,
   onRestart,
   onResetAccessibility,
+  onTriggerBrowserAutomation,
   permissionStatus,
   summary,
 }: {
@@ -2675,6 +2738,7 @@ function PermissionSetupView({
   onRefresh: () => void;
   onRestart: () => void;
   onResetAccessibility: () => void;
+  onTriggerBrowserAutomation: () => void;
   permissionStatus: string;
   summary: BackendCapturePermissionSummary;
 }) {
@@ -2712,6 +2776,7 @@ function PermissionSetupView({
           onOpenSettings={onOpenSettings}
           onRefresh={onRefresh}
           onRestart={onRestart}
+          onTriggerBrowserAutomation={onTriggerBrowserAutomation}
           summary={summary}
         />
         <div className="permission-actions">
@@ -2765,12 +2830,14 @@ function PermissionStatusList({
   onOpenSettings,
   onRefresh,
   onRestart,
+  onTriggerBrowserAutomation,
   summary,
 }: {
   compact?: boolean;
   onOpenSettings: (permissionId: string) => void;
   onRefresh: () => void;
   onRestart: () => void;
+  onTriggerBrowserAutomation?: () => void;
   summary: BackendCapturePermissionSummary | null;
 }) {
   const [copyStatus, setCopyStatus] = useState("Copy app path");
@@ -2807,7 +2874,26 @@ function PermissionStatusList({
             {check.settingsLabel && <small>{check.settingsLabel}</small>}
           </div>
           <strong>{permissionStatusLabel(check.status)}</strong>
-          {check.actionLabel && (
+          {check.id === "browser-automation" && check.status === "user_prompt" ? (
+            <div className="permission-row-actions">
+              <button
+                className="button compact primary"
+                onClick={onTriggerBrowserAutomation ?? (() => onOpenSettings(check.id))}
+                type="button"
+              >
+                <Icon name="check" />
+                <span>Grant now</span>
+              </button>
+              <button
+                className="button compact"
+                onClick={() => onOpenSettings(check.id)}
+                type="button"
+                title="Open Automation Settings"
+              >
+                <Icon name="sliders" />
+              </button>
+            </div>
+          ) : check.actionLabel ? (
             <button
               className="button compact"
               onClick={() => onOpenSettings(check.id)}
@@ -2816,7 +2902,7 @@ function PermissionStatusList({
               <Icon name="arrow" />
               <span>{check.actionLabel}</span>
             </button>
-          )}
+          ) : null}
         </article>
       ))}
       <div className="permission-diagnostics">
@@ -3334,7 +3420,7 @@ function HourDetailView({
                   .slice(0, 4);
                 return (
                   <article className="hour-app-row" key={app.app}>
-                    <div className="app-color-dot" style={{ background: appColor(app.app) }} />
+                    <AppIcon appName={app.app} className="app-color-dot" />
                     <div>
                       <strong>{app.app}</strong>
                       <em>{visibleContext.join(" · ") || "No file, folder, or site captured"}</em>
@@ -3776,26 +3862,46 @@ function AppsView({
                 <strong>1. Choose an app</strong>
                 <span>All apps used today</span>
               </header>
-              {apps.map((app) => (
-                <button
-                  aria-pressed={selectedApp?.app === app.app}
-                  className="app-detail-button"
-                  key={app.app}
-                  onClick={() => {
-                    setActiveAppName(app.app);
-                    setSelectedProjectLabel(null);
-                  }}
-                  type="button"
-                >
-                  <strong>{app.app}</strong>
-                  <span>{formatDuration(app.durationMs)} · {app.events} event{app.events === 1 ? "" : "s"}</span>
-                  <em>
-                    {app.aiTools.length
-                      ? `AI: ${app.aiTools.map((tool) => tool.tool).slice(0, 3).join(", ")}`
-                      : `${app.projects.length} place${app.projects.length === 1 ? "" : "s"}`}
-                  </em>
-                </button>
-              ))}
+              {apps.map((app) => {
+                const isSelected = selectedApp?.app === app.app;
+                return (
+                  <div className="activity-app-entry" key={app.app}>
+                    <button
+                      aria-pressed={isSelected}
+                      className="app-detail-button"
+                      onClick={() => {
+                        setActiveAppName(app.app);
+                        setSelectedProjectLabel(null);
+                      }}
+                      type="button"
+                    >
+                      <AppIcon appName={app.app} className="activity-app-icon" />
+                      <span className="activity-app-label">
+                        <strong>{app.app}</strong>
+                        <em>
+                          {app.aiTools.length
+                            ? `AI: ${app.aiTools.map((tool) => tool.tool).slice(0, 3).join(", ")}`
+                            : `${app.projects.length} place${app.projects.length === 1 ? "" : "s"}`}
+                        </em>
+                      </span>
+                      <span className="activity-app-duration">{formatDuration(app.durationMs)}</span>
+                    </button>
+                    {isSelected && app.files.length > 0 && (
+                      <ul className="activity-file-list" aria-label={`Files in ${app.app}`}>
+                        {app.files.map((file) => (
+                          <li className="activity-file-row" key={`${file.name}-${file.context ?? ""}`}>
+                            <span className="activity-file-name">
+                              {file.name}
+                              {file.context && <em> — {file.context}</em>}
+                            </span>
+                            <span className="activity-file-duration">{formatDuration(file.durationMs)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
             <div className="activity-column project-drilldown" aria-label="Folders, sites, and windows">
@@ -4991,6 +5097,7 @@ function SettingsView({
   onRefreshCapturePermissions,
   onRestartApp,
   onRestoreDatabase,
+  onTriggerBrowserAutomation,
   permissionStatus,
   permissionSummary,
   saveAiConfig,
@@ -5024,6 +5131,7 @@ function SettingsView({
   onRefreshCapturePermissions: () => void;
   onRestartApp: () => void;
   onRestoreDatabase: () => void;
+  onTriggerBrowserAutomation: () => void;
   permissionStatus: string;
   permissionSummary: BackendCapturePermissionSummary | null;
   saveAiConfig: (event: FormEvent<HTMLFormElement>) => void;
@@ -5124,6 +5232,7 @@ function SettingsView({
                   onOpenSettings={onOpenCapturePermission}
                   onRefresh={onRefreshCapturePermissions}
                   onRestart={onRestartApp}
+                  onTriggerBrowserAutomation={onTriggerBrowserAutomation}
                   summary={permissionSummary}
                 />
               </section>

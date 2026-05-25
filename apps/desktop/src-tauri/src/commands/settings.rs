@@ -4,10 +4,16 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 
 use crate::{
+    app_icons::app_icon_data_url,
     error::CommandError,
     models::{DatabaseTransferResult, Settings, SettingsPatch, StorageLocationInfo},
     store::WorktraceStore,
 };
+
+#[tauri::command]
+pub fn get_app_icon(app_name: String) -> Option<String> {
+    app_icon_data_url(&app_name)
+}
 
 const TERMINAL_BRIDGE_SCRIPT: &str =
     include_str!("../../../../../scripts/worktrace-terminal-bridge.sh");

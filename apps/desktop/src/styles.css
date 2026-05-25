@@ -313,6 +313,13 @@ dd {
   color: var(--warning);
 }
 
+.permission-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
 .permission-list-actions {
   display: flex;
   flex-wrap: wrap;
@@ -539,6 +546,15 @@ button {
   color: white;
   font-size: 11px;
   font-weight: 750;
+  flex-shrink: 0;
+}
+
+/* When the real icon PNG is shown, drop the colored bg and show the image neatly */
+.sidebar-app-icon.app-icon-img,
+.app-color-dot.app-icon-img {
+  background: none !important;
+  object-fit: contain;
+  border-radius: 5px;
 }
 
 .sidebar-app-row > span:last-child {
@@ -1422,9 +1438,10 @@ kbd {
 }
 
 .app-color-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 999px;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  flex-shrink: 0;
 }
 
 .hour-app-row > div:nth-child(2) {
@@ -2462,9 +2479,11 @@ textarea {
 
 .app-detail-button,
 .project-detail-button {
-  display: grid;
-  gap: 3px;
-  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  width: 100%;
 }
 
 .app-detail-button strong,
@@ -2478,6 +2497,97 @@ textarea {
 .project-detail-button em {
   color: var(--text-muted);
   font-style: normal;
+}
+
+/* Real icon inside the activity app list */
+.activity-app-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 750;
+}
+.activity-app-icon.app-icon-img {
+  background: none !important;
+  object-fit: contain;
+}
+
+.activity-app-label {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+.activity-app-label strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.activity-app-label em {
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-app-duration {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary) !important;
+  flex-shrink: 0;
+  text-align: right;
+  min-width: 44px;
+}
+
+/* Expandable file sub-rows shown when app is selected */
+.activity-app-entry {
+  border-bottom: 1px solid var(--border-subtle);
+}
+.activity-app-entry .app-detail-button {
+  border-bottom: none;
+}
+
+.activity-file-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 6px 44px; /* indent to align with app name */
+  border-top: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--bg-raised) 50%, transparent);
+}
+
+.activity-file-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 12px 4px 0;
+}
+
+.activity-file-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.activity-file-name em {
+  color: var(--text-muted);
+  font-style: normal;
+}
+
+.activity-file-duration {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  min-width: 36px;
+  text-align: right;
 }
 
 .app-inspector {

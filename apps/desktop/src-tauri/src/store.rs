@@ -25,7 +25,7 @@ use crate::{
     models::{
         AgentRun, AgentRunInput, AiContextUsage, AiContributionRow, AiOutputLedgerItem,
         AiToolUsage, AiUsage, AiUsageInput, AiUsageSummary, AppProjectUsage, AppUsage,
-        AppUsageSummary, AutomationCandidate, BrowserBridgeEvent, CaptureHealthCheck,
+        AppUsageSummary, FileUsage, AutomationCandidate, BrowserBridgeEvent, CaptureHealthCheck,
         CaptureHealthSummary, Commitment, CommitmentInput, DatabaseTransferResult, EmailThread,
         EmailThreadInput, ExportPayload, ExportRangeInput, FieldVisit, FieldVisitInput, IdleBlock,
         IdleBlockInput, LoopAction, LoopActionInput, LoopRisk, Meeting, MeetingInput,
@@ -6223,6 +6223,128 @@ fn is_observed_ai_usage_row(usage: &AiUsage) -> bool {
         && usage.duration_ms.unwrap_or_default() > 0
 }
 
+/// Known editor and IDE app names whose window titles follow the
+/// `"filename — project — AppName"` (or similar) pattern.
+const EDITOR_APPS: &[&str] = &[
+    "Visual Studio Code",
+    "VS Code Insiders",
+    "Cursor",
+    "Sublime Text",
+    "Sublime Text 2",
+    "Sublime Text 3",
+    "Sublime Text 4",
+    "Xcode",
+    "IntelliJ IDEA",
+    "WebStorm",
+    "PyCharm",
+    "GoLand",
+    "Rider",
+    "CLion",
+    "RubyMine",
+    "DataGrip",
+    "Nova",
+    "BBEdit",
+    "MacVim",
+    "Neovim",
+    "Zed",
+];
+
+/// Parse an editor window title into `(filename, project)`.
+///
+/// Handles the common patterns:
+/// - VS Code / Cursor / Zed : `"filename — project — AppName"`
+///   (may have a leading `●` or `•` for modified files)
+/// - Sublime Text 4          : `"filename (project) - Sublime Text"`
+/// - JetBrains               : `"filename [/path/to/project] – IDE"`
+fn parse_editor_file_from_title(
+    title: &str,
+    app_name: &str,
+) -> Option<(String, Option<String>)> {
+    if !EDITOR_APPS.contains(&app_name) {
+        return None;
+    }
+
+    // Strip leading modified-file marker (● U+25CF or • U+2022)
+    let title = title
+        .trim_start_matches('\u{25CF}')
+        .trim_start_matches('\u{2022}')
+        .trim();
+
+    // ── VS Code / Cursor / Zed / Xcode: "file — project — App" ──────────
+    // Use U+2014 em-dash as primary separator; some systems emit " - ".
+    let parts_em: Vec<&str> = title.split(" \u{2014} ").collect();
+    if parts_em.len() >= 2 {
+        let filename = parts_em[0].trim().to_string();
+        if looks_like_filename(&filename) {
+            let project = if parts_em.len() >= 3 {
+                // parts[1] is the project, parts[2..] is the app name
+                let p = parts_em[1].trim().to_string();
+                if !EDITOR_APPS.contains(&p.as_str()) {
+                    Some(basename_from_path(&p))
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            return Some((filename, project));
+        }
+    }
+
+    // ── Sublime Text: "file (project) - Sublime Text" ────────────────────
+    if let Some(paren_start) = title.rfind(" (") {
+        if let Some(paren_end) = title[paren_start..].find(')') {
+            let filename = title[..paren_start].trim().to_string();
+            let project_raw = &title[paren_start + 2..paren_start + paren_end];
+            if looks_like_filename(&filename) {
+                let project = if !project_raw.is_empty() {
+                    Some(basename_from_path(project_raw.trim()))
+                } else {
+                    None
+                };
+                return Some((filename, project));
+            }
+        }
+    }
+
+    // ── JetBrains: "file [/path] – IDE" ──────────────────────────────────
+    let parts_en: Vec<&str> = title.split(" \u{2013} ").collect(); // en-dash
+    if parts_en.len() >= 2 {
+        let filename = parts_en[0].trim().to_string();
+        if looks_like_filename(&filename) {
+            // Look for a bracket-enclosed project path
+            let project = parts_en[1..]
+                .iter()
+                .find_map(|part| {
+                    let part = part.trim();
+                    if part.starts_with('[') && part.ends_with(']') {
+                        Some(basename_from_path(&part[1..part.len() - 1]))
+                    } else {
+                        None
+                    }
+                });
+            return Some((filename, project));
+        }
+    }
+
+    None
+}
+
+fn looks_like_filename(s: &str) -> bool {
+    if s.is_empty() || s.len() > 200 {
+        return false;
+    }
+    // Must contain a '.' and the extension should be recognisable code/doc extension,
+    // OR it must not look like an app name.
+    let has_extension = s.contains('.');
+    let looks_like_path = s.starts_with('/') || s.contains('\\');
+    !looks_like_path && has_extension
+}
+
+fn basename_from_path(path: &str) -> String {
+    path.rsplit(['/', '\\']).next().unwrap_or(path).to_string()
+}
+
 fn build_app_usage_summary(events: &[SourceEvent]) -> AppUsageSummary {
     let mut app_buckets: HashMap<String, Vec<&SourceEvent>> = HashMap::new();
     for event in events {
@@ -6247,17 +6369,31 @@ fn build_app_usage_summary(events: &[SourceEvent]) -> AppUsageSummary {
                 .map(|event| event_duration_ms(event))
                 .sum();
 
+            // (file_name, context) → (duration_ms, events)
+            let mut file_buckets: HashMap<(String, Option<String>), (i64, usize)> = HashMap::new();
+
             for event in &app_events {
                 let project = source_event_context_label(event);
                 let bucket = project_buckets.entry(project).or_default();
-                bucket.duration_ms += event_duration_ms(event);
+                let dur = event_duration_ms(event);
+                bucket.duration_ms += dur;
                 bucket.events += 1;
                 *bucket
                     .contexts
                     .entry(source_event_full_context_label(event))
-                    .or_default() += event_duration_ms(event);
+                    .or_default() += dur;
                 if let Some(title) = event.title.as_deref().and_then(clean_capture_label) {
-                    push_example(&mut bucket.examples, title);
+                    push_example(&mut bucket.examples, title.clone());
+
+                    // Build per-file breakdown for editors
+                    if let Some((filename, proj)) =
+                        parse_editor_file_from_title(&title, &app)
+                    {
+                        let key = (filename, proj);
+                        let entry = file_buckets.entry(key).or_default();
+                        entry.0 += dur;
+                        entry.1 += 1;
+                    }
                 }
                 if source_event_ai_tool(event).is_some() {
                     app_ai_events.push(*event);
@@ -6287,12 +6423,26 @@ fn build_app_usage_summary(events: &[SourceEvent]) -> AppUsageSummary {
                 .collect::<Vec<_>>();
             projects.sort_by_key(|project| std::cmp::Reverse(project.duration_ms));
 
+            let mut files: Vec<FileUsage> = file_buckets
+                .into_iter()
+                .map(|((name, context), (dur, evts))| FileUsage {
+                    name,
+                    context,
+                    duration_ms: dur,
+                    events: evts,
+                })
+                .collect();
+            files.sort_by_key(|f| std::cmp::Reverse(f.duration_ms));
+            // Keep the top 20 most-used files to avoid bloating the payload
+            files.truncate(20);
+
             AppUsage {
                 app,
                 duration_ms,
                 events: app_events.len(),
                 projects,
                 ai_tools: ai_tools_from_events(&app_ai_events),
+                files,
             }
         })
         .collect::<Vec<_>>();

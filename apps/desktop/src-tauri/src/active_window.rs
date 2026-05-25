@@ -84,7 +84,7 @@ fn native_frontmost_application() -> Option<ActiveWindowInfo> {
 
     let workspace = NSWorkspace::sharedWorkspace();
     let app = workspace.frontmostApplication()?;
-    let app_name = app
+    let raw_name = app
         .localizedName()
         .as_deref()
         .and_then(ns_string_to_string)
@@ -93,6 +93,7 @@ fn native_frontmost_application() -> Option<ActiveWindowInfo> {
                 .as_deref()
                 .and_then(ns_string_to_string)
         })?;
+    let app_name = normalize_app_display_name(&raw_name).to_owned();
     let process_id = u32::try_from(app.processIdentifier()).ok();
     let title = process_id
         .and_then(accessibility_focused_window_title)
@@ -153,10 +154,11 @@ fn applescript_frontmost_application() -> Option<ActiveWindowInfo> {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let mut lines = stdout.lines();
-    let app_name = lines.next()?.trim().to_string();
-    if app_name.is_empty() {
+    let raw_name = lines.next()?.trim().to_string();
+    if raw_name.is_empty() {
         return None;
     }
+    let app_name = normalize_app_display_name(&raw_name).to_owned();
     let title = lines
         .next()
         .map(str::trim)
@@ -1204,6 +1206,40 @@ fn is_self_app(app_name: &str) -> bool {
             | "worktrace-ai"
             | "ai.worktrace.desktop"
     )
+}
+
+/// Map raw OS process/bundle names to the user-visible display name.
+/// macOS `localizedName` returns the CFBundleName, which is often shorter than
+/// the product name users recognise (e.g. "Code" vs "Visual Studio Code").
+pub fn normalize_app_display_name(name: &str) -> &str {
+    match name {
+        // VS Code family
+        "Code"                          => "Visual Studio Code",
+        "Code - Insiders"               => "VS Code Insiders",
+        "code"                          => "Visual Studio Code",
+        // Cursor (already correct, kept for explicitness)
+        "Cursor"                        => "Cursor",
+        // JetBrains IDEs — short names macOS sometimes returns
+        "idea"                          => "IntelliJ IDEA",
+        "webstorm"                      => "WebStorm",
+        "pycharm"                       => "PyCharm",
+        "goland"                        => "GoLand",
+        "rider"                         => "Rider",
+        "clion"                         => "CLion",
+        "datagrip"                      => "DataGrip",
+        "rubymine"                      => "RubyMine",
+        // Browsers
+        "chrome"                        => "Google Chrome",
+        "Google Chrome Helper"          => "Google Chrome",
+        "Google Chrome Helper (GPU)"    => "Google Chrome",
+        "Chromium"                      => "Chromium",
+        // Comms
+        "zoom.us"                       => "Zoom",
+        // Terminals
+        "iTerm2"                        => "iTerm2",
+        // Everything else: return as-is
+        other                           => other,
+    }
 }
 
 #[cfg(test)]

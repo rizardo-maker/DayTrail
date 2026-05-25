@@ -262,6 +262,19 @@ pub struct AppUsage {
     pub events: usize,
     pub projects: Vec<AppProjectUsage>,
     pub ai_tools: Vec<AiToolUsage>,
+    /// Per-file (or per-tab) time breakdown, populated for editors and browsers.
+    pub files: Vec<FileUsage>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileUsage {
+    /// Filename (for editors) or page title / domain (for browsers).
+    pub name: String,
+    /// Project folder, workspace name, or site domain.
+    pub context: Option<String>,
+    pub duration_ms: i64,
+    pub events: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

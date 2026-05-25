@@ -147,11 +147,10 @@ fn macos_permission_checks(accessibility_granted: bool) -> Vec<CapturePermission
             label: "Browser automation".to_string(),
             required: false,
             status: "user_prompt".to_string(),
-            detail: "macOS asks once when DayTrail reads a supported browser's active tab URL."
-                .to_string(),
+            detail: "Lets DayTrail read your active browser tab URL. Click \"Grant now\" to approve for each open browser in one step — or macOS will ask the first time DayTrail captures a tab.".to_string(),
             settings_label: Some("Privacy & Security > Automation".to_string()),
             settings_url: Some(AUTOMATION_URL.to_string()),
-            action_label: Some("Open Automation Settings".to_string()),
+            action_label: Some("Grant now".to_string()),
         },
         CapturePermissionCheck {
             id: "screen-recording".to_string(),
@@ -255,6 +254,50 @@ pub fn request_capture_permission(permission_id: &str) -> Result<CapturePermissi
     #[cfg(not(target_os = "macos"))]
     {
         let _ = permission_id;
+        Ok(capture_permission_summary())
+    }
+}
+
+/// Proactively trigger the macOS automation TCC prompt for every browser
+/// that is currently running.  macOS only shows the dialog when the app
+/// actually attempts to script a target, so we fire a harmless
+/// `tell application X to get name` for each running browser.
+/// Non-running browsers are skipped — osascript would otherwise launch them.
+pub fn trigger_browser_automation_prompt() -> Result<CapturePermissionSummary> {
+    #[cfg(target_os = "macos")]
+    {
+        const BROWSERS: &[&str] = &[
+            "Safari",
+            "Google Chrome",
+            "Firefox",
+            "Arc",
+            "Brave Browser",
+            "Microsoft Edge",
+            "Opera",
+            "Vivaldi",
+        ];
+
+        for browser in BROWSERS {
+            // Only script browsers that are already running.
+            let running = std::process::Command::new("pgrep")
+                .args(["-xq", browser])
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false);
+
+            if running {
+                let script = format!("tell application \"{}\" to get name", browser);
+                let _ = std::process::Command::new("osascript")
+                    .args(["-e", &script])
+                    .output();
+            }
+        }
+
+        Ok(capture_permission_summary())
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
         Ok(capture_permission_summary())
     }
 }

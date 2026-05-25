@@ -1,4 +1,5 @@
 pub mod active_window;
+pub mod app_icons;
 pub mod commands;
 pub mod error;
 pub mod llm;

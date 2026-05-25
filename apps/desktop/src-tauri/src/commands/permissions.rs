@@ -6,6 +6,7 @@ use crate::{
     permissions::{
         capture_permission_summary, open_permission_settings,
         request_capture_permission as request_capture_permission_setup,
+        trigger_browser_automation_prompt as trigger_browser_prompt,
     },
 };
 
@@ -32,6 +33,11 @@ pub fn request_capture_permission(
 pub fn restart_app(app: AppHandle) -> Result<bool, CommandError> {
     app.request_restart();
     Ok(true)
+}
+
+#[tauri::command]
+pub fn trigger_browser_automation_prompt() -> Result<CapturePermissionSummary, CommandError> {
+    trigger_browser_prompt().map_err(Into::into)
 }
 
 #[tauri::command]
