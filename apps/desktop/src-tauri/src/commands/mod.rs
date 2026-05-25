@@ -16,6 +16,7 @@ pub mod settings;
 pub mod tasks;
 pub mod today;
 pub mod tracking;
+pub mod work_context;
 pub mod work_memory;
 
 pub fn handler() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sync + 'static {
@@ -79,6 +80,9 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Syn
         search::search_work_memory,
         work_memory::materialize_work_memory,
         bridge::ingest_browser_event,
-        quick_note::delete_quick_note
+        quick_note::delete_quick_note,
+        work_context::get_active_work_context,
+        work_context::set_active_work_context,
+        work_context::clear_active_work_context
     ]
 }

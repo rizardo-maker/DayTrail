@@ -205,6 +205,7 @@ pub struct TodaySnapshot {
     pub pause_state: PauseState,
     pub settings: Settings,
     pub project_context: Option<ProjectContext>,
+    pub active_work_context: Option<ActiveWorkContext>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -442,6 +443,7 @@ pub struct ExportPayload {
     pub settings: Settings,
     pub pause_state: PauseState,
     pub project_context: Option<ProjectContext>,
+    pub active_work_context: Option<ActiveWorkContext>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -934,4 +936,39 @@ pub struct SourceEvent {
     pub sensitivity: String,
     pub metadata_json: Option<String>,
     pub created_at: i64,
+}
+
+// ── Git context ───────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitContext {
+    pub branch: Option<String>,
+    pub repo_root: Option<String>,
+    pub remote_origin: Option<String>,
+    pub ticket_id: Option<String>,
+}
+
+// ── Active work context ───────────────────────────────────────────────────────
+
+/// The user's explicitly-set current work context.  Stored as a singleton row.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActiveWorkContext {
+    pub client: Option<String>,
+    pub project: Option<String>,
+    pub task: Option<String>,
+    pub ticket_id: Option<String>,
+    pub billable: bool,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActiveWorkContextInput {
+    pub client: Option<String>,
+    pub project: Option<String>,
+    pub task: Option<String>,
+    pub ticket_id: Option<String>,
+    pub billable: Option<bool>,
 }

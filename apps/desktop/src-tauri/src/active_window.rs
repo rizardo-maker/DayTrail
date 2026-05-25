@@ -16,7 +16,7 @@ use chrono::{SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    models::TerminalBridgeMetadata,
+    models::{GitContext, TerminalBridgeMetadata},
     project_detection::{default_project_sources, detect_project_candidates_from_sources},
     store::WorktraceStore,
 };
@@ -31,6 +31,7 @@ pub struct ActiveWindowInfo {
     pub workspace_key: Option<String>,
     pub workspace_candidates: Vec<String>,
     pub ai_tools: Vec<String>,
+    pub git_context: Option<GitContext>,
     pub captured_at: String,
 }
 
@@ -117,6 +118,7 @@ fn native_frontmost_application() -> Option<ActiveWindowInfo> {
             push_tool(&mut ai_tools, &tool);
         }
     }
+    let git_context = workspace_key.as_deref().and_then(detect_git_context);
 
     Some(ActiveWindowInfo {
         app_name,
@@ -126,6 +128,7 @@ fn native_frontmost_application() -> Option<ActiveWindowInfo> {
         workspace_key,
         workspace_candidates,
         ai_tools,
+        git_context,
         captured_at: now_utc(),
     })
 }
@@ -189,6 +192,7 @@ fn applescript_frontmost_application() -> Option<ActiveWindowInfo> {
             push_tool(&mut ai_tools, &tool);
         }
     }
+    let git_context = workspace_key.as_deref().and_then(detect_git_context);
 
     Some(ActiveWindowInfo {
         app_name,
@@ -198,6 +202,7 @@ fn applescript_frontmost_application() -> Option<ActiveWindowInfo> {
         workspace_key,
         workspace_candidates,
         ai_tools,
+        git_context,
         captured_at: now_utc(),
     })
 }
@@ -363,6 +368,84 @@ fn editor_workspace_candidates_from_storage(app_name: &str) -> Vec<String> {
         .into_iter()
         .map(|context| context.path)
         .collect()
+}
+
+// ── Git context detection ─────────────────────────────────────────────────
+
+/// Extract a ticket/issue ID from a branch name or window title.
+/// Supports: Jira/Linear (PROJ-123), GitLab MR (!4209), GitHub/generic (#123).
+fn extract_ticket_id(text: &str) -> Option<String> {
+    for word in text.split(|c: char| c.is_whitespace() || matches!(c, '/' | '_' | ':' | ',')) {
+        let word = word.trim_matches(|c: char| matches!(c, '"' | '\'' | '(' | ')' | '[' | ']' | '.'));
+        if word.is_empty() {
+            continue;
+        }
+        // GitLab MR: !NNNN
+        if let Some(rest) = word.strip_prefix('!') {
+            if (1..=6).contains(&rest.len()) && rest.chars().all(|c| c.is_ascii_digit()) {
+                return Some(format!("!{rest}"));
+            }
+        }
+        // GitHub / generic issue: #NNNN
+        if let Some(rest) = word.strip_prefix('#') {
+            if (1..=6).contains(&rest.len()) && rest.chars().all(|c| c.is_ascii_digit()) {
+                return Some(format!("#{rest}"));
+            }
+        }
+        // Jira / Linear style: PREFIX-NNNN  (2–10 uppercase letters, dash, 1–6 digits)
+        if let Some(dash) = word.find('-') {
+            let prefix = &word[..dash];
+            let suffix = &word[dash + 1..];
+            if (2..=10).contains(&prefix.len())
+                && prefix.chars().all(|c| c.is_ascii_uppercase())
+                && (1..=6).contains(&suffix.len())
+                && suffix.chars().all(|c| c.is_ascii_digit())
+            {
+                return Some(word.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn run_git(workspace_path: &str, args: &[&str]) -> Option<String> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(workspace_path)
+        .args(args)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if value.is_empty() { None } else { Some(value) }
+}
+
+/// Run lightweight git commands to enrich an editor workspace event with
+/// branch name, repo root, remote origin, and any ticket ID in the branch.
+/// All calls use a 1-second timeout via the git config flag.
+pub fn detect_git_context(workspace_path: &str) -> Option<GitContext> {
+    // git is slow on cold start — skip if the dir isn't a git repo
+    if !Path::new(workspace_path).join(".git").exists() &&
+       run_git(workspace_path, &["rev-parse", "--git-dir"]).is_none() {
+        return None;
+    }
+    let branch = run_git(workspace_path, &["branch", "--show-current"]);
+    let repo_root = run_git(workspace_path, &["rev-parse", "--show-toplevel"]);
+    let remote_origin = run_git(workspace_path, &["remote", "get-url", "origin"]);
+    let ticket_id = branch.as_deref()
+        .and_then(extract_ticket_id)
+        .or_else(|| remote_origin.as_deref().and_then(extract_ticket_id));
+
+    // Only return Some if we got at least the branch
+    branch.as_ref()?;
+    Some(GitContext {
+        branch,
+        repo_root,
+        remote_origin,
+        ticket_id,
+    })
 }
 
 #[cfg(target_os = "macos")]
@@ -959,6 +1042,7 @@ fn platform_active_window() -> Option<ActiveWindowInfo> {
                 push_tool(&mut ai_tools, &tool);
             }
         }
+        let git_context = workspace_key.as_deref().and_then(detect_git_context);
 
         Some(ActiveWindowInfo {
             app_name,
@@ -968,6 +1052,7 @@ fn platform_active_window() -> Option<ActiveWindowInfo> {
             workspace_key,
             workspace_candidates,
             ai_tools,
+            git_context,
             captured_at: now_utc(),
         })
     }

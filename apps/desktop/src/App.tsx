@@ -207,6 +207,16 @@ type BackendTodaySnapshot = {
   pauseState: { paused: boolean };
   settings: BackendSettings;
   projectContext?: { path: string; source: string } | null;
+  activeWorkContext?: BackendActiveWorkContext | null;
+};
+
+type BackendActiveWorkContext = {
+  client: string | null;
+  project: string | null;
+  task: string | null;
+  ticketId: string | null;
+  billable: boolean;
+  updatedAt: number;
 };
 
 type BackendSourceEvent = {
@@ -1008,6 +1018,59 @@ function uniqueValues(values: Array<string | null | undefined>) {
   return [...new Set(values.filter((value): value is string => Boolean(value)))];
 }
 
+// ── Domain → work category ────────────────────────────────────────────────────
+
+type DomainCategory =
+  | "ai-tools" | "code-review" | "project-mgmt" | "email" | "communication"
+  | "documentation" | "design" | "research" | "meetings" | "web";
+
+const DOMAIN_PATTERNS: Array<[RegExp, DomainCategory]> = [
+  [/chatgpt\.com|claude\.ai|gemini\.google|aistudio\.google|perplexity\.ai|copilot\.microsoft|you\.com|poe\.com/, "ai-tools"],
+  [/github\.com|gitlab|bitbucket|sourcehut|review\./, "code-review"],
+  [/jira|linear\.app|trello|asana|monday\.com|notion\.so|clickup|basecamp|shortcut\.com/, "project-mgmt"],
+  [/mail\.google|gmail|outlook|yahoo.*mail|protonmail|fastmail|mail\.|webmail/, "email"],
+  [/slack\.com|discord|teams\.microsoft|zoom\.us|meet\.google|webex|whereby\.com|loom\.com/, "communication"],
+  [/notion\.so|confluence|docs\.google|dropbox.*paper|quip|gitbook|readme\.io|docusaurus/, "documentation"],
+  [/figma\.com|miro\.com|sketch\.cloud|zeplin|invision|canva\.com|framer\.com/, "design"],
+  [/stackoverflow|mdn|developer\.|docs\.|w3schools|medium\.com|youtube\.com|dev\.to|hashnode/, "research"],
+  [/calendar\.google|cal\.com|calendly|outlook.*calendar|fantastical/, "meetings"],
+];
+
+function classifyDomain(domain: string | null | undefined): DomainCategory | null {
+  if (!domain) return null;
+  const d = domain.toLowerCase();
+  for (const [pattern, category] of DOMAIN_PATTERNS) {
+    if (pattern.test(d)) return category;
+  }
+  return null;
+}
+
+const DOMAIN_CATEGORY_LABELS: Record<DomainCategory, string> = {
+  "ai-tools": "AI",
+  "code-review": "Code review",
+  "project-mgmt": "Project mgmt",
+  "email": "Email",
+  "communication": "Comms",
+  "documentation": "Docs",
+  "design": "Design",
+  "research": "Research",
+  "meetings": "Meetings",
+  "web": "Web",
+};
+
+const DOMAIN_CATEGORY_COLORS: Record<DomainCategory, string> = {
+  "ai-tools": "#a855f7",
+  "code-review": "#3b82f6",
+  "project-mgmt": "#f59e0b",
+  "email": "#10b981",
+  "communication": "#06b6d4",
+  "documentation": "#6366f1",
+  "design": "#ec4899",
+  "research": "#f97316",
+  "meetings": "#14b8a6",
+  "web": "#6b7280",
+};
+
 // ── App icon with real macOS bundle icon, falls back to colored letter ──────
 
 const appIconCache = new Map<string, string | null>();
@@ -1769,6 +1832,153 @@ function mapAiConfig(settings?: BackendSettings): AiConfig {
   };
 }
 
+// ── Work Context Widget ───────────────────────────────────────────────────────
+
+interface WorkContextForm {
+  client: string;
+  project: string;
+  task: string;
+  ticketId: string;
+  billable: boolean;
+}
+
+function WorkContextWidget({
+  context,
+  onSave,
+  onClear,
+}: {
+  context: BackendActiveWorkContext | null | undefined;
+  onSave: (form: WorkContextForm) => void;
+  onClear: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState<WorkContextForm>({
+    client: context?.client ?? "",
+    project: context?.project ?? "",
+    task: context?.task ?? "",
+    ticketId: context?.ticketId ?? "",
+    billable: context?.billable ?? true,
+  });
+
+  // Sync form when context changes externally
+  useEffect(() => {
+    if (!open) {
+      setForm({
+        client: context?.client ?? "",
+        project: context?.project ?? "",
+        task: context?.task ?? "",
+        ticketId: context?.ticketId ?? "",
+        billable: context?.billable ?? true,
+      });
+    }
+  }, [context, open]);
+
+  const hasContext = Boolean(context?.client || context?.project || context?.task);
+  const label = context?.project || context?.client || context?.task || "Set current task";
+  const sublabel = [context?.client, context?.ticketId].filter(Boolean).join(" · ");
+
+  function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    onSave(form);
+    setOpen(false);
+  }
+
+  return (
+    <>
+      <div className="work-context-widget">
+        <button
+          className={`work-context-btn${hasContext ? " work-context-btn--active" : ""}`}
+          onClick={() => setOpen(true)}
+          title="Set current work context (client / project / task)"
+          type="button"
+        >
+          <span className={`work-context-dot${hasContext ? " work-context-dot--set" : ""}`} />
+          <span className="work-context-label">
+            <strong>{label}</strong>
+            {sublabel && <em>{sublabel}</em>}
+          </span>
+          {context?.billable === false && <span className="work-context-badge non-billable">NB</span>}
+          {context?.billable === true && hasContext && <span className="work-context-badge billable">$</span>}
+        </button>
+      </div>
+
+      {open && (
+        <div className="offline-modal-backdrop" onClick={() => setOpen(false)}>
+          <form
+            className="offline-modal work-context-modal"
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={handleSubmit}
+          >
+            <h3>Current work context</h3>
+            <p>Tag all new activity with this context until you change it.</p>
+            <label className="offline-modal-full">
+              Client / Organisation
+              <input
+                placeholder="e.g. GG IVF, Acme Corp"
+                type="text"
+                value={form.client}
+                onChange={(e) => setForm((prev) => ({ ...prev, client: e.target.value }))}
+              />
+            </label>
+            <label className="offline-modal-full">
+              Project / Module
+              <input
+                placeholder="e.g. Medics v9, WhatsApp Follow-up"
+                type="text"
+                value={form.project}
+                onChange={(e) => setForm((prev) => ({ ...prev, project: e.target.value }))}
+              />
+            </label>
+            <label className="offline-modal-full">
+              Task / Description
+              <input
+                placeholder="e.g. Bug 124238 – EMR Casesheet"
+                type="text"
+                value={form.task}
+                onChange={(e) => setForm((prev) => ({ ...prev, task: e.target.value }))}
+              />
+            </label>
+            <div className="offline-modal-row">
+              <label className="offline-modal-full">
+                Ticket / MR / Issue ID
+                <input
+                  placeholder="e.g. PROJ-123 or !4209"
+                  type="text"
+                  value={form.ticketId}
+                  onChange={(e) => setForm((prev) => ({ ...prev, ticketId: e.target.value }))}
+                />
+              </label>
+              <label className="offline-modal-full">
+                Billable?
+                <select
+                  value={form.billable ? "yes" : "no"}
+                  onChange={(e) => setForm((prev) => ({ ...prev, billable: e.target.value === "yes" }))}
+                >
+                  <option value="yes">Yes — billable</option>
+                  <option value="no">No — internal / personal</option>
+                </select>
+              </label>
+            </div>
+            <div className="offline-modal-actions">
+              <button className="button" type="submit">Save context</button>
+              {hasContext && (
+                <button
+                  className="button ghost"
+                  onClick={() => { onClear(); setOpen(false); }}
+                  type="button"
+                >
+                  Clear
+                </button>
+              )}
+              <button className="button ghost" onClick={() => setOpen(false)} type="button">Cancel</button>
+            </div>
+          </form>
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function App() {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const toastTimers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
@@ -2411,6 +2621,29 @@ export default function App() {
     }
   }
 
+  async function saveWorkContext(form: WorkContextForm) {
+    const result = await invokeTauri<BackendActiveWorkContext>("set_active_work_context", {
+      input: {
+        client: form.client.trim() || null,
+        project: form.project.trim() || null,
+        task: form.task.trim() || null,
+        ticketId: form.ticketId.trim() || null,
+        billable: form.billable,
+      },
+    });
+    if (result) {
+      setTodaySnapshot((prev) => prev ? { ...prev, activeWorkContext: result } : prev);
+      const label = form.project || form.client || form.task || "context";
+      addToast("success", "Work context set", `Tracking as: ${label}`);
+    }
+  }
+
+  async function clearWorkContext() {
+    await invokeTauri("clear_active_work_context");
+    setTodaySnapshot((prev) => prev ? { ...prev, activeWorkContext: null } : prev);
+    addToast("info", "Work context cleared", "Activity will be untagged until you set a new context.");
+  }
+
   async function toggleTracking() {
     const nextPaused = !isPaused;
 
@@ -2705,6 +2938,12 @@ export default function App() {
             ))}
           </section>
         )}
+
+        <WorkContextWidget
+          context={todaySnapshot?.activeWorkContext}
+          onSave={saveWorkContext}
+          onClear={clearWorkContext}
+        />
 
         <div className="sidebar-offline-action">
           <button
@@ -3861,6 +4100,7 @@ function SessionDetailPanel({
         )}
         {events.map((event) => {
           const eventAiTools = aiToolLabelsForEvent(event);
+          const domainCat = classifyDomain(event.domain);
 
           return (
             <article className="event-detail-row" key={event.id}>
@@ -3868,11 +4108,19 @@ function SessionDetailPanel({
               <strong>{eventTitle(event)}</strong>
               <em>{eventSubtitle(event) || eventContextLabel(event)}</em>
               <small>{formatDuration(event.durationMs)}</small>
-              {eventAiTools.length > 0 && (
+              {(eventAiTools.length > 0 || domainCat) && (
                 <span className="event-ai-chip-row">
                   {eventAiTools.map((tool) => (
                     <span className="event-ai-chip" key={tool}>{tool}</span>
                   ))}
+                  {domainCat && eventAiTools.length === 0 && (
+                    <span
+                      className="event-category-chip"
+                      style={{ background: DOMAIN_CATEGORY_COLORS[domainCat] }}
+                    >
+                      {DOMAIN_CATEGORY_LABELS[domainCat]}
+                    </span>
+                  )}
                 </span>
               )}
             </article>
@@ -4306,6 +4554,14 @@ function AppsView({
                     )}
                     {selectedEvents.slice(0, activityTab === "timeline" ? 80 : 30).map((event) => {
                       const eventAiTools = aiToolLabelsForEvent(event);
+                      const domainCat = classifyDomain(event.domain);
+                      const gitCtx = (() => {
+                        if (!event.metadata_json) return null;
+                        try {
+                          const meta = JSON.parse(event.metadata_json) as { gitContext?: { branch?: string; ticketId?: string } };
+                          return meta.gitContext ?? null;
+                        } catch { return null; }
+                      })();
 
                       return (
                         <article className="event-detail-row" key={event.id}>
@@ -4313,11 +4569,25 @@ function AppsView({
                           <strong>{eventTitle(event)}</strong>
                           <em>{eventSubtitle(event) || eventContextLabel(event)}</em>
                           <small>{formatDuration(event.durationMs)}</small>
-                          {eventAiTools.length > 0 && (
+                          {(eventAiTools.length > 0 || domainCat || gitCtx?.branch) && (
                             <span className="event-ai-chip-row">
                               {eventAiTools.map((tool) => (
                                 <span className="event-ai-chip" key={tool}>{tool}</span>
                               ))}
+                              {domainCat && eventAiTools.length === 0 && (
+                                <span
+                                  className="event-category-chip"
+                                  style={{ background: DOMAIN_CATEGORY_COLORS[domainCat] }}
+                                >
+                                  {DOMAIN_CATEGORY_LABELS[domainCat]}
+                                </span>
+                              )}
+                              {gitCtx?.ticketId && (
+                                <span className="event-git-chip event-git-chip--ticket">{gitCtx.ticketId}</span>
+                              )}
+                              {gitCtx?.branch && !gitCtx.ticketId && (
+                                <span className="event-git-chip">{gitCtx.branch}</span>
+                              )}
                             </span>
                           )}
                         </article>

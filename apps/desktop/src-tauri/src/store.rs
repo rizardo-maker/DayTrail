@@ -31,11 +31,12 @@ use crate::{
         IdleBlockInput, LoopAction, LoopActionInput, LoopRisk, Meeting, MeetingInput,
         MenuBarSummary, NextBestAction, ParallelStreamSummary, PauseState, PlanningItem,
         PlanningOutput, PrivacyDeleteSummary, ProjectContext, QuickNote, ReportOutput,
-        ReturnMarker, ScratchpadNote, ScratchpadNoteInput, SearchResult, Settings,
-        SettingsConfigPayload, SettingsPatch, SourceEvent, SourceEventInput, StateSnapshot,
-        StateSnapshotInput, StorageLocationInfo, Task, TaskInput, TaskStatus,
-        TerminalBridgeMetadata, TimesheetRow, TodaySnapshot, UnclosedLoopItem, WorkMemorySummary,
-        WorkOutput, WorkOutputInput, WorkSessionSummary, WorkspaceContext,
+        ActiveWorkContext, ActiveWorkContextInput, ReturnMarker, ScratchpadNote,
+        ScratchpadNoteInput, SearchResult, Settings, SettingsConfigPayload, SettingsPatch,
+        SourceEvent, SourceEventInput, StateSnapshot, StateSnapshotInput, StorageLocationInfo,
+        Task, TaskInput, TaskStatus, TerminalBridgeMetadata, TimesheetRow, TodaySnapshot,
+        UnclosedLoopItem, WorkMemorySummary, WorkOutput, WorkOutputInput, WorkSessionSummary,
+        WorkspaceContext,
     },
     platform::{
         keychain_key_for_ai_provider, keychain_key_from_ref, set_launch_at_login, KeychainAdapter,
@@ -445,6 +446,17 @@ impl WorktraceStore {
                 confidence REAL NOT NULL DEFAULT 0,
                 evidence_json TEXT,
                 created_at INTEGER NOT NULL
+            );
+
+            -- Singleton row: the user's currently declared work context
+            CREATE TABLE IF NOT EXISTS active_work_context (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                client TEXT,
+                project TEXT,
+                task TEXT,
+                ticket_id TEXT,
+                billable INTEGER NOT NULL DEFAULT 1,
+                updated_at INTEGER NOT NULL
             );
             "#,
         )?;
@@ -1729,6 +1741,7 @@ impl WorktraceStore {
             pause_state,
             settings,
             project_context: detect_project_from_sources(default_project_sources()).ok(),
+            active_work_context: self.get_active_work_context().ok().flatten(),
         })
     }
 
@@ -2269,6 +2282,7 @@ impl WorktraceStore {
             settings: self.get_settings()?,
             pause_state: self.pause_state()?,
             project_context: detect_project_from_sources(default_project_sources()).ok(),
+            active_work_context: self.get_active_work_context().ok().flatten(),
         })
     }
 
@@ -3288,6 +3302,62 @@ impl WorktraceStore {
             blocks.push(block?);
         }
         Ok(blocks)
+    }
+
+    // ── Active work context ───────────────────────────────────────────────────
+
+    pub fn get_active_work_context(&self) -> Result<Option<ActiveWorkContext>> {
+        let conn = self.lock()?;
+        let mut stmt = conn.prepare(
+            "SELECT client, project, task, ticket_id, billable, updated_at
+             FROM active_work_context WHERE id = 1",
+        )?;
+        let mut rows = stmt.query_map([], |row| {
+            Ok(ActiveWorkContext {
+                client: row.get(0)?,
+                project: row.get(1)?,
+                task: row.get(2)?,
+                ticket_id: row.get(3)?,
+                billable: row.get::<_, i64>(4).map(|v| v != 0).unwrap_or(true),
+                updated_at: row.get(5)?,
+            })
+        })?;
+        match rows.next() {
+            Some(row) => Ok(Some(row?)),
+            None => Ok(None),
+        }
+    }
+
+    pub fn set_active_work_context(&self, input: ActiveWorkContextInput) -> Result<ActiveWorkContext> {
+        let now = now_ms();
+        let billable = input.billable.unwrap_or(true) as i64;
+        let conn = self.lock()?;
+        conn.execute(
+            r#"INSERT INTO active_work_context (id, client, project, task, ticket_id, billable, updated_at)
+               VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6)
+               ON CONFLICT(id) DO UPDATE SET
+                 client = excluded.client,
+                 project = excluded.project,
+                 task = excluded.task,
+                 ticket_id = excluded.ticket_id,
+                 billable = excluded.billable,
+                 updated_at = excluded.updated_at"#,
+            params![input.client, input.project, input.task, input.ticket_id, billable, now],
+        )?;
+        Ok(ActiveWorkContext {
+            client: input.client,
+            project: input.project,
+            task: input.task,
+            ticket_id: input.ticket_id,
+            billable: input.billable.unwrap_or(true),
+            updated_at: now,
+        })
+    }
+
+    pub fn clear_active_work_context(&self) -> Result<()> {
+        let conn = self.lock()?;
+        conn.execute("DELETE FROM active_work_context WHERE id = 1", [])?;
+        Ok(())
     }
 
     pub fn record_loop_action(&self, input: LoopActionInput) -> Result<LoopAction> {
