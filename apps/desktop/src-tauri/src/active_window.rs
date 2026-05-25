@@ -35,25 +35,61 @@ pub struct ActiveWindowInfo {
     pub captured_at: String,
 }
 
+/// Threshold: skip recording if system has been idle longer than this.
+const IDLE_SKIP_THRESHOLD_MS: u64 = 60_000; // 60 seconds
+
 pub fn spawn_active_window_watcher(store: WorktraceStore, interval: Duration) {
     thread::spawn(move || loop {
         let _ = store.ingest_local_bridge_files();
-        if let Some(info) = active_window_fallback() {
-            if !is_self_app(&info.app_name) {
-                let metadata = serde_json::to_string(&info).ok();
-                let _ = store.record_active_window_context(
-                    &info.app_name,
-                    info.window_title.as_deref(),
-                    info.url.as_deref(),
-                    info.workspace_key.as_deref(),
-                    metadata.as_deref(),
-                    Some(interval),
-                );
-                let _ = store.materialize_work_memory();
+        // Skip when the user has been away (keyboard/mouse idle) for ≥1 minute.
+        let idle_ms = system_idle_ms().unwrap_or(0);
+        if idle_ms < IDLE_SKIP_THRESHOLD_MS {
+            if let Some(info) = active_window_fallback() {
+                if !is_self_app(&info.app_name) {
+                    let metadata = serde_json::to_string(&info).ok();
+                    let _ = store.record_active_window_context(
+                        &info.app_name,
+                        info.window_title.as_deref(),
+                        info.url.as_deref(),
+                        info.workspace_key.as_deref(),
+                        metadata.as_deref(),
+                        Some(interval),
+                    );
+                    let _ = store.materialize_work_memory();
+                }
             }
         }
         thread::sleep(interval);
     });
+}
+
+/// Returns how long the system HID devices (keyboard/mouse) have been idle, in milliseconds.
+/// Returns `None` if the check is unavailable or fails.
+#[cfg(target_os = "macos")]
+fn system_idle_ms() -> Option<u64> {
+    let output = Command::new("ioreg")
+        .args(["-c", "IOHIDSystem", "-n", "IOHIDSystem"])
+        .output()
+        .ok()?;
+    let text = String::from_utf8_lossy(&output.stdout);
+    for line in text.lines() {
+        if line.contains("HIDIdleTime") {
+            // format: "HIDIdleTime" = 3456789012
+            let ns: u64 = line
+                .split('=')
+                .nth(1)?
+                .trim()
+                .parse()
+                .ok()?;
+            return Some(ns / 1_000_000);
+        }
+    }
+    None
+}
+
+#[cfg(not(target_os = "macos"))]
+fn system_idle_ms() -> Option<u64> {
+    None
 }
 
 pub fn active_window_fallback() -> Option<ActiveWindowInfo> {

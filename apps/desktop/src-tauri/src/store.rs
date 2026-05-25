@@ -31,12 +31,12 @@ use crate::{
         IdleBlockInput, LoopAction, LoopActionInput, LoopRisk, Meeting, MeetingInput,
         MenuBarSummary, NextBestAction, ParallelStreamSummary, PauseState, PlanningItem,
         PlanningOutput, PrivacyDeleteSummary, ProjectContext, QuickNote, ReportOutput,
-        ActiveWorkContext, ActiveWorkContextInput, ReturnMarker, ScratchpadNote,
-        ScratchpadNoteInput, SearchResult, Settings, SettingsConfigPayload, SettingsPatch,
-        SourceEvent, SourceEventInput, StateSnapshot, StateSnapshotInput, StorageLocationInfo,
-        Task, TaskInput, TaskStatus, TerminalBridgeMetadata, TimesheetRow, TodaySnapshot,
-        UnclosedLoopItem, WorkMemorySummary, WorkOutput, WorkOutputInput, WorkSessionSummary,
-        WorkspaceContext,
+        ActiveWorkContext, ActiveWorkContextInput, ReturnMarker, ReviewSessionInput,
+        ScratchpadNote, ScratchpadNoteInput, SearchResult, Settings, SettingsConfigPayload,
+        SettingsPatch, SourceEvent, SourceEventInput, StateSnapshot, StateSnapshotInput,
+        StorageLocationInfo, Task, TaskInput, TaskStatus, TerminalBridgeMetadata, TimesheetRow,
+        TodaySnapshot, UnclosedLoopItem, WorkMemorySummary, WorkOutput, WorkOutputInput,
+        WorkSessionSummary, WorkspaceContext,
     },
     platform::{
         keychain_key_for_ai_provider, keychain_key_from_ref, set_launch_at_login, KeychainAdapter,
@@ -579,6 +579,12 @@ impl WorktraceStore {
         )?;
 
         Self::ensure_column(conn, "work_sessions", "context_id", "TEXT")?;
+        Self::ensure_column(conn, "work_sessions", "billing_status", "TEXT NOT NULL DEFAULT 'draft'")?;
+        Self::ensure_column(conn, "work_sessions", "billable", "INTEGER NOT NULL DEFAULT 1")?;
+        Self::ensure_column(conn, "work_sessions", "client_label", "TEXT")?;
+        Self::ensure_column(conn, "work_sessions", "project_label", "TEXT")?;
+        Self::ensure_column(conn, "work_sessions", "ticket_id", "TEXT")?;
+        Self::ensure_column(conn, "work_sessions", "review_notes", "TEXT")?;
 
         Self::ensure_column(conn, "email_threads", "latest_at", "INTEGER")?;
         Self::ensure_column(
@@ -3495,36 +3501,127 @@ impl WorktraceStore {
         let mut stmt = conn.prepare(
             r#"
             SELECT id, title, status, started_at, ended_at, duration_ms, ai_used,
-                   confidence, summary, evidence_json
+                   confidence, summary, evidence_json,
+                   billing_status, billable, client_label, project_label, ticket_id, review_notes
             FROM work_sessions
             ORDER BY COALESCE(ended_at, started_at) DESC, started_at DESC
             LIMIT ?1
             "#,
         )?;
-        let rows = stmt.query_map(params![limit as i64], |row| {
-            let evidence_json: Option<String> = row.get(9)?;
-            Ok(WorkSessionSummary {
-                id: row.get(0)?,
-                title: row.get(1)?,
-                status: row.get(2)?,
-                started_at: row.get(3)?,
-                ended_at: row.get(4)?,
-                duration_ms: row.get(5)?,
-                ai_used: row.get::<_, i64>(6)? == 1,
-                confidence_percent: ((row.get::<_, f64>(7)? * 100.0).round() as i64).clamp(0, 100),
-                summary: row.get(8)?,
-                evidence_event_ids: evidence_json
-                    .as_deref()
-                    .and_then(|json| serde_json::from_str(json).ok())
-                    .unwrap_or_default(),
-            })
-        })?;
-
+        let rows = stmt.query_map(params![limit as i64], Self::work_session_from_row)?;
         let mut sessions = Vec::new();
         for session in rows {
             sessions.push(session?);
         }
         Ok(sessions)
+    }
+
+    pub fn review_session(&self, input: ReviewSessionInput) -> Result<WorkSessionSummary> {
+        let conn = self.lock()?;
+        conn.execute(
+            r#"UPDATE work_sessions
+               SET billing_status = COALESCE(?2, billing_status),
+                   billable       = COALESCE(?3, billable),
+                   client_label   = COALESCE(?4, client_label),
+                   project_label  = COALESCE(?5, project_label),
+                   ticket_id      = COALESCE(?6, ticket_id),
+                   review_notes   = COALESCE(?7, review_notes),
+                   updated_at     = ?8
+               WHERE id = ?1"#,
+            params![
+                input.session_id,
+                input.billing_status,
+                input.billable.map(|b| if b { 1_i64 } else { 0_i64 }),
+                input.client_label,
+                input.project_label,
+                input.ticket_id,
+                input.review_notes,
+                now_ms(),
+            ],
+        )?;
+        let session = conn.query_row(
+            r#"SELECT id, title, status, started_at, ended_at, duration_ms, ai_used,
+                      confidence, summary, evidence_json,
+                      billing_status, billable, client_label, project_label, ticket_id, review_notes
+               FROM work_sessions WHERE id = ?1"#,
+            params![input.session_id],
+            Self::work_session_from_row,
+        )?;
+        Ok(session)
+    }
+
+    pub fn list_sessions_for_review(
+        &self,
+        from_date: Option<&str>,
+        to_date: Option<&str>,
+    ) -> Result<Vec<WorkSessionSummary>> {
+        let (from_ms, to_ms) = date_range_to_ms(from_date, to_date)?;
+        self.list_work_sessions_between(from_ms, to_ms, 500)
+    }
+
+    pub fn export_timesheet_markdown(
+        &self,
+        from_date: Option<&str>,
+        to_date: Option<&str>,
+    ) -> Result<String> {
+        let (from_ms, to_ms) = date_range_to_ms(from_date, to_date)?;
+        let sessions = self.list_work_sessions_between(from_ms, to_ms, 500)?;
+        let events = self.list_source_events_between(from_ms, to_ms, 10_000)?;
+        let rows = build_timesheet_rows(&sessions, &events, from_ms, to_ms);
+
+        let mut md = String::new();
+        md.push_str("# Timesheet\n\n");
+
+        // group by date
+        let mut current_date = String::new();
+        let mut date_total_ms: i64 = 0;
+        let mut grand_total_ms: i64 = 0;
+
+        for row in &rows {
+            if row.billing_status == "excluded" {
+                continue;
+            }
+            if row.local_date != current_date {
+                if !current_date.is_empty() {
+                    md.push_str(&format!(
+                        "\n**Day total: {}**\n\n",
+                        format_duration_md(date_total_ms)
+                    ));
+                }
+                current_date = row.local_date.clone();
+                date_total_ms = 0;
+                md.push_str(&format!("## {}\n\n", current_date));
+                md.push_str("| Time | Duration | Title | Client / Project | Ticket | Billable | Apps |\n");
+                md.push_str("|------|----------|-------|-----------------|--------|----------|------|\n");
+            }
+            date_total_ms += row.duration_ms;
+            grand_total_ms += row.duration_ms;
+            let time_label = format_time_label(row.started_at);
+            let duration = format_duration_md(row.duration_ms);
+            let client_project = row
+                .client_label
+                .clone()
+                .or_else(|| row.project_label.clone())
+                .unwrap_or_else(|| row.project_or_client.clone());
+            let ticket = row.ticket_id.clone().unwrap_or_default();
+            let billable = if row.billable { "✓" } else { "–" };
+            let title = row.title.replace('|', "\\|");
+            md.push_str(&format!(
+                "| {} | {} | {} | {} | {} | {} | {} |\n",
+                time_label, duration, title, client_project, ticket, billable, row.app
+            ));
+        }
+        if !current_date.is_empty() {
+            md.push_str(&format!(
+                "\n**Day total: {}**\n\n",
+                format_duration_md(date_total_ms)
+            ));
+        }
+        md.push_str(&format!(
+            "\n---\n**Grand total: {}**\n",
+            format_duration_md(grand_total_ms)
+        ));
+        Ok(md)
     }
 
     pub fn list_parallel_streams(&self, limit: usize) -> Result<Vec<ParallelStreamSummary>> {
@@ -3641,7 +3738,8 @@ impl WorktraceStore {
         let mut stmt = conn.prepare(
             r#"
             SELECT id, title, status, started_at, ended_at, duration_ms, ai_used,
-                   confidence, summary, evidence_json
+                   confidence, summary, evidence_json,
+                   billing_status, billable, client_label, project_label, ticket_id, review_notes
             FROM work_sessions
             WHERE (?1 IS NULL OR ended_at >= ?1)
               AND (?2 IS NULL OR started_at < ?2)
@@ -5436,6 +5534,12 @@ impl WorktraceStore {
                 .as_deref()
                 .and_then(|json| serde_json::from_str(json).ok())
                 .unwrap_or_default(),
+            billing_status: row.get::<_, Option<String>>(10)?.unwrap_or_else(|| "draft".to_string()),
+            billable: row.get::<_, i64>(11)? != 0,
+            client_label: row.get(12)?,
+            project_label: row.get(13)?,
+            ticket_id: row.get(14)?,
+            review_notes: row.get(15)?,
         })
     }
 
@@ -5576,6 +5680,12 @@ fn work_session_summary_from_materialized(session: MaterializedSession) -> WorkS
         confidence_percent: (session.confidence * 100.0).round() as i64,
         summary: session.summary,
         evidence_event_ids: session.evidence_event_ids,
+        billing_status: "draft".to_string(),
+        billable: true,
+        client_label: None,
+        project_label: None,
+        ticket_id: None,
+        review_notes: None,
     }
 }
 
@@ -7196,16 +7306,26 @@ fn build_timesheet_rows(
                     "ai_assisted".to_string()
                 },
                 app: apps.join(", "),
-                project_or_client: contexts.first().cloned().unwrap_or_else(|| {
-                    session
-                        .summary
-                        .clone()
-                        .unwrap_or_else(|| "Captured context".to_string())
-                }),
+                project_or_client: session
+                    .client_label
+                    .clone()
+                    .or_else(|| session.project_label.clone())
+                    .or_else(|| contexts.first().cloned())
+                    .unwrap_or_else(|| {
+                        session
+                            .summary
+                            .clone()
+                            .unwrap_or_else(|| "Captured context".to_string())
+                    }),
                 ai_used: !ai_tools.is_empty() || session.ai_used,
                 ai_tools,
                 confidence_percent: session.confidence_percent,
                 evidence_ids: session.evidence_event_ids.clone(),
+                billing_status: session.billing_status.clone(),
+                billable: session.billable,
+                client_label: session.client_label.clone(),
+                project_label: session.project_label.clone(),
+                ticket_id: session.ticket_id.clone(),
             }
         })
         .collect()
@@ -7946,6 +8066,46 @@ fn horizon_end_ms(horizon: &str) -> i64 {
     let days = if horizon == "week" { 6 } else { 0 };
     let date = Local::now().date_naive() + ChronoDuration::days(days);
     local_date_to_epoch_ms(&date.format("%Y-%m-%d").to_string()).unwrap_or_else(now_ms)
+}
+
+fn date_range_to_ms(
+    from_date: Option<&str>,
+    to_date: Option<&str>,
+) -> Result<(Option<i64>, Option<i64>)> {
+    let from_ms = from_date
+        .filter(|v| !v.trim().is_empty())
+        .map(|v| {
+            let d = NaiveDate::parse_from_str(v, "%Y-%m-%d")
+                .with_context(|| format!("invalid from_date: {v}"))?;
+            Ok::<i64, anyhow::Error>(local_day_bounds_ms(d).0)
+        })
+        .transpose()?;
+    let to_ms = to_date
+        .filter(|v| !v.trim().is_empty())
+        .map(|v| {
+            let d = NaiveDate::parse_from_str(v, "%Y-%m-%d")
+                .with_context(|| format!("invalid to_date: {v}"))?;
+            Ok::<i64, anyhow::Error>(local_day_bounds_ms(d).1)
+        })
+        .transpose()?;
+    Ok((from_ms, to_ms))
+}
+
+fn format_duration_md(ms: i64) -> String {
+    let total_secs = ms / 1000;
+    let hours = total_secs / 3600;
+    let mins = (total_secs % 3600) / 60;
+    if hours > 0 {
+        format!("{}h {}m", hours, mins)
+    } else {
+        format!("{}m", mins)
+    }
+}
+
+fn format_time_label(epoch_ms: i64) -> String {
+    let dt = Local.timestamp_millis_opt(epoch_ms).single();
+    dt.map(|t| t.format("%H:%M").to_string())
+        .unwrap_or_else(|| "--:--".to_string())
 }
 
 fn export_range_bounds(range: &ExportRangeInput) -> Result<(Option<i64>, Option<i64>)> {

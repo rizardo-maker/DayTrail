@@ -17,6 +17,7 @@ type ViewKey =
   | "automation"
   | "restore"
   | "rituals"
+  | "review"
   | "memory"
   | "settings";
 type RitualKey = "daily";
@@ -217,6 +218,25 @@ type BackendActiveWorkContext = {
   ticketId: string | null;
   billable: boolean;
   updatedAt: number;
+};
+
+type BackendWorkSessionSummary = {
+  id: string;
+  title: string;
+  status: string;
+  startedAt: number;
+  endedAt: number;
+  durationMs: number;
+  aiUsed: boolean;
+  confidencePercent: number;
+  summary: string | null;
+  evidenceEventIds: string[];
+  billingStatus: string;
+  billable: boolean;
+  clientLabel: string | null;
+  projectLabel: string | null;
+  ticketId: string | null;
+  reviewNotes: string | null;
 };
 
 type BackendSourceEvent = {
@@ -532,6 +552,7 @@ type WorkspaceFolder = {
 const navigation: Array<{ id: ViewKey; label: string; icon: IconName }> = [
   { id: "today", label: "Today", icon: "layout" },
   { id: "apps", label: "Activity", icon: "apps" },
+  { id: "review", label: "Review", icon: "archive" },
   { id: "rituals", label: "Reports", icon: "ritual" },
   { id: "settings", label: "Settings", icon: "sliders" },
 ];
@@ -2038,6 +2059,13 @@ export default function App() {
   const [logOfflineOpen, setLogOfflineOpen] = useState(false);
   const [offlineForm, setOfflineForm] = useState({ start: "", end: "", category: "Away from desk" });
 
+  // Review / timesheet state
+  const [reviewFromDate, setReviewFromDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [reviewToDate, setReviewToDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [reviewSessions, setReviewSessions] = useState<BackendWorkSessionSummary[]>([]);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [exportingTimesheet, setExportingTimesheet] = useState(false);
+
   const displayStreams = useMemo(() => mapStreams(todaySnapshot), [todaySnapshot]);
   const displaySessions = useMemo(() => mapSessions(todaySnapshot), [todaySnapshot]);
   const displayApps = useMemo(
@@ -2659,6 +2687,53 @@ export default function App() {
     }
   }
 
+  async function loadReviewSessions() {
+    setReviewLoading(true);
+    const result = await invokeTauri<BackendWorkSessionSummary[]>(
+      "list_sessions_for_review",
+      { fromDate: reviewFromDate, toDate: reviewToDate },
+    );
+    setReviewSessions(result ?? []);
+    setReviewLoading(false);
+  }
+
+  async function updateSessionBilling(
+    id: string,
+    patch: Partial<BackendWorkSessionSummary>,
+  ) {
+    const result = await invokeTauri<BackendWorkSessionSummary>("review_session", {
+      input: {
+        sessionId: id,
+        billingStatus: patch.billingStatus ?? null,
+        billable: patch.billable ?? null,
+        clientLabel: patch.clientLabel ?? null,
+        projectLabel: patch.projectLabel ?? null,
+        ticketId: patch.ticketId ?? null,
+        reviewNotes: patch.reviewNotes ?? null,
+      },
+    });
+    if (result) {
+      setReviewSessions((prev) =>
+        prev.map((s) => (s.id === id ? result : s)),
+      );
+    }
+  }
+
+  async function exportTimesheetMarkdown() {
+    setExportingTimesheet(true);
+    const md = await invokeTauri<string>("export_timesheet_markdown", {
+      fromDate: reviewFromDate,
+      toDate: reviewToDate,
+    });
+    setExportingTimesheet(false);
+    if (md) {
+      await copyToClipboard(md);
+      addToast("success", "Timesheet copied", "Markdown timesheet copied to clipboard.");
+    } else {
+      addToast("error", "Export failed", "Could not generate timesheet.");
+    }
+  }
+
   async function installTerminalBridge() {
     setTerminalBridgeStatus("Installing terminal bridge...");
     const result = await invokeTauri<BackendTerminalBridgeInstallResult>(
@@ -3083,6 +3158,20 @@ export default function App() {
               quickNote={quickNote}
               selectedStream={selectedStream}
               setQuickNote={setQuickNote}
+            />
+          )}
+          {activeView === "review" && (
+            <ReviewView
+              sessions={reviewSessions}
+              loading={reviewLoading}
+              fromDate={reviewFromDate}
+              toDate={reviewToDate}
+              onFromDate={setReviewFromDate}
+              onToDate={setReviewToDate}
+              onLoad={loadReviewSessions}
+              onUpdate={updateSessionBilling}
+              onExport={exportTimesheetMarkdown}
+              exporting={exportingTimesheet}
             />
           )}
           {activeView === "rituals" && (
@@ -5158,6 +5247,322 @@ const AI_THINKING_MESSAGES = [
   "Weighing your VS Code existentialism…",
   "Normalising your browser rabbit holes…",
 ];
+
+// ─── Review / Timesheet ──────────────────────────────────────────────────────
+
+interface ReviewViewProps {
+  sessions: BackendWorkSessionSummary[];
+  loading: boolean;
+  fromDate: string;
+  toDate: string;
+  onFromDate: (v: string) => void;
+  onToDate: (v: string) => void;
+  onLoad: () => void;
+  onUpdate: (id: string, patch: Partial<BackendWorkSessionSummary>) => Promise<void>;
+  onExport: () => void;
+  exporting: boolean;
+}
+
+function formatReviewDuration(ms: number): string {
+  const s = Math.round(ms / 1000);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m`;
+  return `${s}s`;
+}
+
+function formatReviewTime(epochMs: number): string {
+  return new Date(epochMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function ReviewSessionCard({
+  session,
+  onUpdate,
+}: {
+  session: BackendWorkSessionSummary;
+  onUpdate: (patch: Partial<BackendWorkSessionSummary>) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draftClient, setDraftClient] = useState(session.clientLabel ?? "");
+  const [draftProject, setDraftProject] = useState(session.projectLabel ?? "");
+  const [draftTicket, setDraftTicket] = useState(session.ticketId ?? "");
+  const [draftNotes, setDraftNotes] = useState(session.reviewNotes ?? "");
+  const [saving, setSaving] = useState(false);
+
+  const statusColors: Record<string, string> = {
+    draft: "var(--text-muted)",
+    confirmed: "var(--success)",
+    excluded: "var(--danger)",
+  };
+  const statusBg: Record<string, string> = {
+    draft: "var(--bg-control)",
+    confirmed: "var(--success-bg)",
+    excluded: "var(--danger-bg)",
+  };
+
+  async function cycleStatus() {
+    const next = session.billingStatus === "draft"
+      ? "confirmed"
+      : session.billingStatus === "confirmed"
+      ? "excluded"
+      : "draft";
+    await onUpdate({ billingStatus: next });
+  }
+
+  async function saveEdits() {
+    setSaving(true);
+    await onUpdate({
+      clientLabel: draftClient.trim() || null,
+      projectLabel: draftProject.trim() || null,
+      ticketId: draftTicket.trim() || null,
+      reviewNotes: draftNotes.trim() || null,
+    });
+    setSaving(false);
+    setEditing(false);
+  }
+
+  const excluded = session.billingStatus === "excluded";
+
+  return (
+    <div
+      className="review-session-card"
+      style={{ opacity: excluded ? 0.45 : 1 }}
+    >
+      <div className="review-card-left">
+        <span className="review-card-time">
+          {formatReviewTime(session.startedAt)} – {formatReviewTime(session.endedAt)}
+        </span>
+        <span className="review-card-duration">{formatReviewDuration(session.durationMs)}</span>
+        {session.aiUsed && (
+          <span className="review-card-ai-badge">AI</span>
+        )}
+      </div>
+
+      <div className="review-card-body">
+        <strong className="review-card-title">{session.title}</strong>
+        {session.summary && (
+          <p className="review-card-summary">{session.summary}</p>
+        )}
+        <div className="review-card-meta">
+          {(session.clientLabel || session.projectLabel) && (
+            <span className="review-meta-chip review-meta-client">
+              {session.clientLabel ?? session.projectLabel}
+            </span>
+          )}
+          {session.ticketId && (
+            <span className="review-meta-chip review-meta-ticket">#{session.ticketId}</span>
+          )}
+          {session.reviewNotes && (
+            <span className="review-meta-chip review-meta-note">{session.reviewNotes}</span>
+          )}
+        </div>
+
+        {editing && (
+          <div className="review-edit-form">
+            <div className="review-edit-row">
+              <label>
+                Client
+                <input
+                  type="text"
+                  value={draftClient}
+                  placeholder="e.g. Acme Corp"
+                  onChange={(e) => setDraftClient(e.target.value)}
+                />
+              </label>
+              <label>
+                Project
+                <input
+                  type="text"
+                  value={draftProject}
+                  placeholder="e.g. Website redesign"
+                  onChange={(e) => setDraftProject(e.target.value)}
+                />
+              </label>
+              <label>
+                Ticket
+                <input
+                  type="text"
+                  value={draftTicket}
+                  placeholder="e.g. PROJ-123"
+                  onChange={(e) => setDraftTicket(e.target.value)}
+                />
+              </label>
+            </div>
+            <label className="review-edit-notes">
+              Notes
+              <input
+                type="text"
+                value={draftNotes}
+                placeholder="Optional note for timesheet"
+                onChange={(e) => setDraftNotes(e.target.value)}
+              />
+            </label>
+            <div className="review-edit-actions">
+              <button
+                type="button"
+                className="review-btn review-btn--primary"
+                disabled={saving}
+                onClick={saveEdits}
+              >
+                {saving ? "Saving…" : "Save"}
+              </button>
+              <button
+                type="button"
+                className="review-btn"
+                onClick={() => setEditing(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="review-card-actions">
+        <button
+          type="button"
+          className="review-billable-toggle"
+          title={session.billable ? "Mark non-billable" : "Mark billable"}
+          onClick={() => onUpdate({ billable: !session.billable })}
+          aria-pressed={session.billable}
+        >
+          {session.billable ? "💰" : "–"}
+        </button>
+        <button
+          type="button"
+          className="review-status-btn"
+          style={{
+            color: statusColors[session.billingStatus] ?? "var(--text-muted)",
+            background: statusBg[session.billingStatus] ?? "var(--bg-control)",
+          }}
+          onClick={cycleStatus}
+          title="Cycle: draft → confirmed → excluded"
+        >
+          {session.billingStatus === "confirmed" ? "✓ Confirmed"
+            : session.billingStatus === "excluded" ? "✗ Excluded"
+            : "Draft"}
+        </button>
+        <button
+          type="button"
+          className="review-edit-btn"
+          title="Edit client / project / ticket"
+          onClick={() => setEditing(!editing)}
+        >
+          Edit
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ReviewView({
+  sessions,
+  loading,
+  fromDate,
+  toDate,
+  onFromDate,
+  onToDate,
+  onLoad,
+  onUpdate,
+  onExport,
+  exporting,
+}: ReviewViewProps) {
+  const billableMs = sessions
+    .filter((s) => s.billingStatus === "confirmed" && s.billable)
+    .reduce((sum, s) => sum + s.durationMs, 0);
+  const confirmedCount = sessions.filter((s) => s.billingStatus === "confirmed").length;
+  const excludedCount = sessions.filter((s) => s.billingStatus === "excluded").length;
+  const draftCount = sessions.filter((s) => s.billingStatus === "draft").length;
+
+  return (
+    <div className="review-view">
+      <div className="review-toolbar">
+        <div className="review-dates">
+          <label>
+            From
+            <input
+              type="date"
+              value={fromDate}
+              onChange={(e) => onFromDate(e.target.value)}
+            />
+          </label>
+          <label>
+            To
+            <input
+              type="date"
+              value={toDate}
+              onChange={(e) => onToDate(e.target.value)}
+            />
+          </label>
+          <button
+            type="button"
+            className="review-btn review-btn--primary"
+            onClick={onLoad}
+            disabled={loading}
+          >
+            {loading ? "Loading…" : "Load sessions"}
+          </button>
+        </div>
+        <button
+          type="button"
+          className="review-btn review-btn--export"
+          onClick={onExport}
+          disabled={exporting || sessions.length === 0}
+          title="Export confirmed sessions as Markdown"
+        >
+          <Icon name="save" />
+          {exporting ? "Exporting…" : "Export timesheet"}
+        </button>
+      </div>
+
+      {sessions.length > 0 && (
+        <div className="review-stats-bar">
+          <span className="review-stat">
+            <em>{sessions.length}</em> sessions
+          </span>
+          <span className="review-stat review-stat--draft">
+            <em>{draftCount}</em> draft
+          </span>
+          <span className="review-stat review-stat--confirmed">
+            <em>{confirmedCount}</em> confirmed
+          </span>
+          {excludedCount > 0 && (
+            <span className="review-stat review-stat--excluded">
+              <em>{excludedCount}</em> excluded
+            </span>
+          )}
+          <span className="review-stat review-stat--billable">
+            <em>{formatReviewDuration(billableMs)}</em> billable
+          </span>
+        </div>
+      )}
+
+      {loading && (
+        <div className="review-loading">Loading sessions…</div>
+      )}
+
+      {!loading && sessions.length === 0 && (
+        <div className="review-empty">
+          <p>No sessions found for this date range.</p>
+          <p className="review-empty-hint">Choose a date range and press "Load sessions".</p>
+        </div>
+      )}
+
+      <div className="review-session-list">
+        {sessions.map((s) => (
+          <ReviewSessionCard
+            key={s.id}
+            session={s}
+            onUpdate={(patch) => onUpdate(s.id, patch)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── AI Loading ──────────────────────────────────────────────────────────────
 
 function AiThinkingLoader() {
   const [msgIdx, setMsgIdx] = useState(0);

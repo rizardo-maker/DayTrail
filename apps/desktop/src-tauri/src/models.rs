@@ -462,6 +462,11 @@ pub struct TimesheetRow {
     pub ai_tools: Vec<String>,
     pub confidence_percent: i64,
     pub evidence_ids: Vec<String>,
+    pub billing_status: String,
+    pub billable: bool,
+    pub client_label: Option<String>,
+    pub project_label: Option<String>,
+    pub ticket_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -547,6 +552,25 @@ pub struct WorkSessionSummary {
     pub confidence_percent: i64,
     pub summary: Option<String>,
     pub evidence_event_ids: Vec<String>,
+    // billing / review fields
+    pub billing_status: String,
+    pub billable: bool,
+    pub client_label: Option<String>,
+    pub project_label: Option<String>,
+    pub ticket_id: Option<String>,
+    pub review_notes: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewSessionInput {
+    pub session_id: String,
+    pub billing_status: Option<String>,
+    pub billable: Option<bool>,
+    pub client_label: Option<String>,
+    pub project_label: Option<String>,
+    pub ticket_id: Option<String>,
+    pub review_notes: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

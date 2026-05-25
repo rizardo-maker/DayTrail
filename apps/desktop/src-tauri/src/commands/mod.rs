@@ -11,6 +11,7 @@ pub mod planning;
 pub mod privacy;
 pub mod quick_note;
 pub mod report;
+pub mod review;
 pub mod search;
 pub mod settings;
 pub mod tasks;
@@ -83,6 +84,9 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Syn
         quick_note::delete_quick_note,
         work_context::get_active_work_context,
         work_context::set_active_work_context,
-        work_context::clear_active_work_context
+        work_context::clear_active_work_context,
+        review::review_session,
+        review::list_sessions_for_review,
+        review::export_timesheet_markdown
     ]
 }
