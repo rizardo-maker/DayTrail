@@ -4255,15 +4255,6 @@ function HourDetailView({
             </div>
           </section>
 
-          {selectedApp && (
-            <AppBreakdownPanel
-              app={selectedApp}
-              events={selectedAppEvents}
-              hourLabel={hourLabel}
-              onClose={() => setSelectedAppName(null)}
-            />
-          )}
-
           {showTechnicalDetails && (
           <section className="panel-block hour-events-panel">
             <PanelHeader eyebrow="Technical details" title="Activity details" value={`${bucket.events.length} item${bucket.events.length === 1 ? "" : "s"}`} />
@@ -4325,6 +4316,14 @@ function HourDetailView({
           </section>
         </aside>
       </div>
+      {selectedApp && (
+        <AppBreakdownPanel
+          app={selectedApp}
+          events={selectedAppEvents}
+          hourLabel={hourLabel}
+          onClose={() => setSelectedAppName(null)}
+        />
+      )}
     </div>
   );
 }
@@ -4362,96 +4361,117 @@ function AppBreakdownPanel({
   }, new Map<string, number>())].sort((left, right) => right[1] - left[1]);
   const sortedEvents = [...events].sort((left, right) => left.startedAt - right.startedAt);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
   return (
-    <section className="panel-block app-breakdown-panel" aria-label={`${app.app} breakdown`}>
-      <header className="app-breakdown-header">
-        <div>
-          <span>App breakdown</span>
-          <h3>{app.app}</h3>
-          <p>{hourLabel} · {formatDuration(app.durationMs)} · {app.events} item{app.events === 1 ? "" : "s"}</p>
-        </div>
-        <button aria-label={`Close ${app.app} breakdown`} className="icon-button" onClick={onClose} type="button">
-          <Icon name="x" />
-        </button>
-      </header>
+    <div className="app-breakdown-overlay" onMouseDown={onClose} role="presentation">
+      <section
+        aria-label={`${app.app} breakdown`}
+        aria-modal="true"
+        className="panel-block app-breakdown-panel"
+        onMouseDown={(event) => event.stopPropagation()}
+        role="dialog"
+      >
+        <header className="app-breakdown-header">
+          <div>
+            <span>App breakdown</span>
+            <h3>{app.app}</h3>
+            <p>{hourLabel} · {formatDuration(app.durationMs)} · {app.events} item{app.events === 1 ? "" : "s"}</p>
+          </div>
+          <button aria-label={`Close ${app.app} breakdown`} className="icon-button" onClick={onClose} type="button">
+            <Icon name="x" />
+          </button>
+        </header>
 
-      <div className="app-breakdown-grid">
-        <div className="app-breakdown-column">
+        <div className="app-breakdown-body">
+          <div className="app-breakdown-grid">
+            <div className="app-breakdown-column">
+              <div className="app-breakdown-section-title">
+                <span>What was open</span>
+                <strong>{app.files.length || contexts.length}</strong>
+              </div>
+              {app.files.length > 0 ? (
+                <div className="app-breakdown-file-list">
+                  {app.files.map((file) => (
+                    <article className="app-breakdown-file-row" key={`${file.name}|${file.context ?? ""}`}>
+                      <strong>{file.name}</strong>
+                      <em>{file.context ?? app.app}</em>
+                      <span>{formatDuration(file.durationMs)}</span>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="context-stack app-breakdown-contexts">
+                  {contexts.length === 0 && <span>No page, file, folder, or title captured</span>}
+                  {contexts.slice(0, 10).map((context) => (
+                    <span key={context}>{context}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="app-breakdown-column">
+              <div className="app-breakdown-section-title">
+                <span>AI and context</span>
+                <strong>{aiByTool.length ? `${aiByTool.length} tool${aiByTool.length === 1 ? "" : "s"}` : "None"}</strong>
+              </div>
+              {aiByTool.length > 0 ? (
+                <div className="ai-tool-list compact-ai-tool-list">
+                  {aiByTool.map(([tool, duration]) => (
+                    <article className="ai-tool-row" key={tool}>
+                      <strong>{tool}</strong>
+                      <span>{formatDuration(duration)}</span>
+                      <div>
+                        <i style={{ width: `${Math.min(100, Math.round((duration / Math.max(app.durationMs, 1)) * 100))}%` }} />
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-state compact-empty">
+                  <strong>No AI detected in this app</strong>
+                  <span>AI labels appear when DayTrail sees known AI tools in titles, URLs, or metadata.</span>
+                </div>
+              )}
+            </div>
+          </div>
+
           <div className="app-breakdown-section-title">
-            <span>What was open</span>
-            <strong>{app.files.length || contexts.length}</strong>
+            <span>Event timeline</span>
+            <strong>{sortedEvents.length} item{sortedEvents.length === 1 ? "" : "s"}</strong>
           </div>
-          {app.files.length > 0 ? (
-            <div className="app-breakdown-file-list">
-              {app.files.map((file) => (
-                <article className="app-breakdown-file-row" key={`${file.name}|${file.context ?? ""}`}>
-                  <strong>{file.name}</strong>
-                  <em>{file.context ?? app.app}</em>
-                  <span>{formatDuration(file.durationMs)}</span>
+          <div className="app-event-timeline">
+            {sortedEvents.length === 0 && (
+              <div className="empty-state compact-empty">
+                <strong>No detailed events</strong>
+                <span>This app was summarized before source-event details were available.</span>
+              </div>
+            )}
+            {sortedEvents.map((event) => {
+              const eventAiTools = aiToolLabelsForEvent(event);
+              return (
+                <article className="app-event-row" key={event.id}>
+                  <span>{eventTimeLabel(event)}</span>
+                  <strong>{eventTitle(event)}</strong>
+                  <em>{eventSubtitle(event) || eventContextLabel(event)}</em>
+                  <b>{formatDuration(event.durationMs)}</b>
+                  {eventAiTools.length > 0 && <i>{eventAiTools.join(", ")}</i>}
                 </article>
-              ))}
-            </div>
-          ) : (
-            <div className="context-stack app-breakdown-contexts">
-              {contexts.length === 0 && <span>No page, file, folder, or title captured</span>}
-              {contexts.slice(0, 10).map((context) => (
-                <span key={context}>{context}</span>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="app-breakdown-column">
-          <div className="app-breakdown-section-title">
-            <span>AI and context</span>
-            <strong>{aiByTool.length ? `${aiByTool.length} tool${aiByTool.length === 1 ? "" : "s"}` : "None"}</strong>
+              );
+            })}
           </div>
-          {aiByTool.length > 0 ? (
-            <div className="ai-tool-list compact-ai-tool-list">
-              {aiByTool.map(([tool, duration]) => (
-                <article className="ai-tool-row" key={tool}>
-                  <strong>{tool}</strong>
-                  <span>{formatDuration(duration)}</span>
-                  <div>
-                    <i style={{ width: `${Math.min(100, Math.round((duration / Math.max(app.durationMs, 1)) * 100))}%` }} />
-                  </div>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <div className="empty-state compact-empty">
-              <strong>No AI detected in this app</strong>
-              <span>AI labels appear when DayTrail sees known AI tools in titles, URLs, or metadata.</span>
-            </div>
-          )}
         </div>
-      </div>
-
-      <div className="app-breakdown-section-title">
-        <span>Event timeline</span>
-        <strong>{sortedEvents.length} item{sortedEvents.length === 1 ? "" : "s"}</strong>
-      </div>
-      <div className="app-event-timeline">
-        {sortedEvents.length === 0 && (
-          <div className="empty-state compact-empty">
-            <strong>No detailed events</strong>
-            <span>This app was summarized before source-event details were available.</span>
-          </div>
-        )}
-        {sortedEvents.slice(0, 24).map((event) => {
-          const eventAiTools = aiToolLabelsForEvent(event);
-          return (
-            <article className="app-event-row" key={event.id}>
-              <span>{eventTimeLabel(event)}</span>
-              <strong>{eventTitle(event)}</strong>
-              <em>{eventSubtitle(event) || eventContextLabel(event)}</em>
-              <b>{formatDuration(event.durationMs)}</b>
-              {eventAiTools.length > 0 && <i>{eventAiTools.join(", ")}</i>}
-            </article>
-          );
-        })}
-      </div>
-    </section>
+      </section>
+    </div>
   );
 }
 
