@@ -1374,17 +1374,30 @@ fn enrich_title_from_pattern(title: &str, app_name: &str) -> Option<String> {
     None
 }
 
-/// **Strategy 2 (~80 ms, cached 10 s per PID)**: AppleScript AX heading search.
+/// **Strategy 2 (~2–5 ms, cached 10 s per PID)**: In-process AX API BFS.
 ///
-/// Searches the window UI tree up to 4 levels deep for `AXHeading` or prominent
-/// `AXStaticText` elements. Works for Electron apps (Claude, Codex, Notion,
-/// Linear, etc.) where the conversation / document title is rendered as an HTML
-/// heading but NOT reflected in the macOS window title bar.
+/// `run_osascript` spawns a subprocess that has NO accessibility permission.
+/// This function runs entirely within the DayTrail process (which DOES have the
+/// permission) using the same C-level AX API as `accessibility_focused_window_title`.
+///
+/// Does a BFS through `AXChildren` up to depth 10, visiting at most 400 nodes,
+/// looking for any element with role `AXHeading` whose value differs from the
+/// app name.  Works for Electron apps (Claude, Codex, Notion, Linear, Obsidian…)
+/// where the conversation / document title is an HTML `<h1>`/`<h2>` rendered
+/// inside a `AXWebArea` but not reflected in the macOS window title bar.
 #[cfg(target_os = "macos")]
 fn ax_content_title_cached(pid: u32, app_name: &str) -> Option<String> {
-    const CACHE_TTL_SECS: u64 = 10;
+    use core_foundation::{
+        base::{CFRelease, CFTypeRef, TCFType},
+        string::{CFString, CFStringRef},
+    };
+    use std::{collections::VecDeque, ffi::c_void, ptr};
 
-    // --- check cache ---
+    const CACHE_TTL_SECS: u64 = 10;
+    const MAX_DEPTH: u32 = 10;
+    const MAX_NODES: usize = 400;
+
+    // --- check cache first ---
     {
         let mut guard = CONTENT_TITLE_CACHE.lock().ok()?;
         let cache = guard.get_or_insert_with(HashMap::new);
@@ -1395,74 +1408,128 @@ fn ax_content_title_cached(pid: u32, app_name: &str) -> Option<String> {
         }
     }
 
-    // --- run AppleScript ---
-    let safe = app_name.replace('"', "");
-    let script = format!(
-        r#"tell application "System Events"
-  try
-    tell process "{safe}"
-      set win to window 1
-      -- Check AXDocument (document-based apps: Keynote, Pages, TextEdit…)
-      try
-        set doc to value of attribute "AXDocument" of win
-        if doc is not missing value and doc is not "" then
-          return doc
-        end if
-      end try
-      -- BFS up to 4 levels deep looking for AXHeading
-      set L1 to UI elements of win
-      repeat with e1 in L1
-        try
-          if role of e1 is "AXHeading" then
-            set t to value of e1
-            if t is not missing value and t is not "" and t is not "{safe}" then return t
-          end if
-          set L2 to UI elements of e1
-          repeat with e2 in L2
-            try
-              if role of e2 is "AXHeading" then
-                set t to value of e2
-                if t is not missing value and t is not "" and t is not "{safe}" then return t
-              end if
-              set L3 to UI elements of e2
-              repeat with e3 in L3
-                try
-                  if role of e3 is "AXHeading" then
-                    set t to value of e3
-                    if t is not missing value and t is not "" and t is not "{safe}" then return t
-                  end if
-                  set L4 to UI elements of e3
-                  repeat with e4 in L4
-                    try
-                      if role of e4 is "AXHeading" then
-                        set t to value of e4
-                        if t is not missing value and t is not "" and t is not "{safe}" then return t
-                      end if
-                    end try
-                  end repeat
-                end try
-              end repeat
-            end try
-          end repeat
-        end try
-      end repeat
-      return ""
-    end tell
-  end try
-  return ""
-end tell"#,
-        safe = safe
-    );
+    // --- C-level AX BFS (in-process, no permission issue) ---
+    type AXUIElementRef = *const c_void;
+    type AXError = i32;
 
-    let result = run_osascript(&[&script]);
-    let enriched = result.and_then(|r| {
-        let t = r.trim().to_string();
-        if t.is_empty() || t.eq_ignore_ascii_case(app_name) {
+    #[link(name = "ApplicationServices", kind = "framework")]
+    extern "C" {
+        fn AXUIElementCreateApplication(pid: i32) -> AXUIElementRef;
+        fn AXUIElementCopyAttributeValue(
+            element: AXUIElementRef,
+            attribute: CFStringRef,
+            value: *mut CFTypeRef,
+        ) -> AXError;
+    }
+
+    #[link(name = "CoreFoundation", kind = "framework")]
+    extern "C" {
+        fn CFGetTypeID(cf: CFTypeRef) -> usize;
+        fn CFStringGetTypeID() -> usize;
+        fn CFArrayGetTypeID() -> usize;
+        fn CFArrayGetCount(array: CFTypeRef) -> isize;
+        fn CFArrayGetValueAtIndex(array: CFTypeRef, idx: isize) -> CFTypeRef;
+        fn CFRetain(cf: CFTypeRef) -> CFTypeRef;
+    }
+
+    unsafe fn ax_str(el: AXUIElementRef, attr: &str) -> Option<String> {
+        let key = CFString::new(attr);
+        let mut val: CFTypeRef = ptr::null();
+        if AXUIElementCopyAttributeValue(el, key.as_concrete_TypeRef(), &mut val) != 0 || val.is_null() {
+            return None;
+        }
+        if CFGetTypeID(val) != CFStringGetTypeID() {
+            CFRelease(val);
+            return None;
+        }
+        let s = CFString::wrap_under_create_rule(val as CFStringRef).to_string();
+        let s = s.trim().to_string();
+        if s.is_empty() { None } else { Some(s) }
+    }
+
+    /// Returns retained children (caller must CFRelease each).
+    unsafe fn ax_children(el: AXUIElementRef) -> Vec<AXUIElementRef> {
+        let key = CFString::new("AXChildren");
+        let mut val: CFTypeRef = ptr::null();
+        if AXUIElementCopyAttributeValue(el, key.as_concrete_TypeRef(), &mut val) != 0 || val.is_null() {
+            return Vec::new();
+        }
+        if CFGetTypeID(val) != CFArrayGetTypeID() {
+            CFRelease(val);
+            return Vec::new();
+        }
+        let count = CFArrayGetCount(val).max(0);
+        let mut out = Vec::with_capacity(count as usize);
+        for i in 0..count {
+            let child = CFArrayGetValueAtIndex(val, i);
+            if !child.is_null() {
+                CFRetain(child);   // take ownership
+                out.push(child as AXUIElementRef);
+            }
+        }
+        CFRelease(val);
+        out
+    }
+
+    unsafe fn bfs_heading(root: AXUIElementRef, app_name: &str) -> Option<String> {
+        // root is already owned by the caller; push it into the queue
+        let mut queue: VecDeque<(AXUIElementRef, u32)> = VecDeque::new();
+        queue.push_back((root, 0));
+        let mut visited = 0usize;
+
+        while let Some((el, depth)) = queue.pop_front() {
+            // Check role
+            let role = ax_str(el, "AXRole").unwrap_or_default();
+            if role == "AXHeading" {
+                let val = ax_str(el, "AXValue").or_else(|| ax_str(el, "AXTitle"));
+                if let Some(v) = val {
+                    if v.len() > 3 && !v.eq_ignore_ascii_case(app_name) {
+                        // Release remaining queue elements
+                        CFRelease(el as CFTypeRef);
+                        for (e, _) in queue.drain(..) {
+                            CFRelease(e as CFTypeRef);
+                        }
+                        return Some(v);
+                    }
+                }
+            }
+
+            // Expand children if within limits
+            if depth < MAX_DEPTH && visited < MAX_NODES {
+                let children = ax_children(el);
+                for child in children {
+                    queue.push_back((child, depth + 1));
+                }
+            }
+
+            CFRelease(el as CFTypeRef);
+            visited += 1;
+        }
+        None
+    }
+
+    let enriched = unsafe {
+        let app_el = AXUIElementCreateApplication(pid as i32);
+        if app_el.is_null() {
             None
         } else {
-            Some(t)
+            // Get focused or main window
+            let key_fw = CFString::new("AXFocusedWindow");
+            let key_mw = CFString::new("AXMainWindow");
+            let mut win_val: CFTypeRef = ptr::null();
+            if AXUIElementCopyAttributeValue(app_el, key_fw.as_concrete_TypeRef(), &mut win_val) != 0 || win_val.is_null() {
+                win_val = ptr::null();
+                AXUIElementCopyAttributeValue(app_el, key_mw.as_concrete_TypeRef(), &mut win_val);
+            }
+            CFRelease(app_el as CFTypeRef);
+
+            if win_val.is_null() {
+                None
+            } else {
+                bfs_heading(win_val as AXUIElementRef, app_name)
+            }
         }
-    });
+    };
 
     // --- update cache ---
     if let Ok(mut guard) = CONTENT_TITLE_CACHE.lock() {
