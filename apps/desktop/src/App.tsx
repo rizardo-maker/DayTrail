@@ -1887,7 +1887,7 @@ function WorkContextEditorModal({
             <label className="offline-modal-full">
               Client / Organisation
               <input
-                placeholder="e.g. GG IVF, Acme Corp"
+                placeholder="e.g. Client name"
                 type="text"
                 value={form.client}
                 onChange={(e) => setForm((prev) => ({ ...prev, client: e.target.value }))}
@@ -1896,7 +1896,7 @@ function WorkContextEditorModal({
             <label className="offline-modal-full">
               Project / Module
               <input
-                placeholder="e.g. Medics v9, WhatsApp Follow-up"
+                placeholder="e.g. Website redesign, API cleanup"
                 type="text"
                 value={form.project}
                 onChange={(e) => setForm((prev) => ({ ...prev, project: e.target.value }))}
@@ -1905,7 +1905,7 @@ function WorkContextEditorModal({
             <label className="offline-modal-full">
               Task / Description
               <input
-                placeholder="e.g. Bug 124238 - EMR Casesheet"
+                placeholder="e.g. Fix login error, write proposal"
                 type="text"
                 value={form.task}
                 onChange={(e) => setForm((prev) => ({ ...prev, task: e.target.value }))}
@@ -1915,7 +1915,7 @@ function WorkContextEditorModal({
               <label className="offline-modal-full">
                 Ticket / MR / Issue ID
                 <input
-                  placeholder="e.g. PROJ-123 or !4209"
+                  placeholder="e.g. TASK-123"
                   type="text"
                   value={form.ticketId}
                   onChange={(e) => setForm((prev) => ({ ...prev, ticketId: e.target.value }))}
@@ -3911,7 +3911,7 @@ function HourlyTimelinePanel({
     const rawContext = topApp?.contexts.find((context) => context && context !== topApp.app);
     return {
       project: rawContext ? compactDisplayLabel(rawContext) : "",
-      task: topApp ? `${bucket.label} - ${topApp.app}` : `${bucket.label} work`,
+      task: topApp ? `${topApp.app} activity` : "",
       billable: true,
     };
   };
