@@ -14,11 +14,19 @@ const systemAppNames = [
   "activity monitor",
   "notification center",
   "usernotificationcenter",
-  "loginwindow",
   "windowserver",
   "control center",
   "dock",
   "problem reporter",
+];
+
+const idleSystemAppNames = [
+  "loginwindow",
+  "com.apple.loginwindow",
+  "screensaver",
+  "com.apple.screensaver",
+  "lockscreen",
+  "com.apple.lockscreen",
 ];
 
 const utilityAppNames = [
@@ -111,6 +119,7 @@ export function classifyApp(appName?: string | null): AppCategory {
   const value = normalizeAppName(appName);
   if (!value) return "unknown";
   if (value === "idle" || value === "away" || value.includes("idle")) return "idle";
+  if (isIdleSystemApp(value)) return "idle";
   if (matchesAny(value, systemAppNames)) return "system";
   if (matchesAny(value, utilityAppNames)) return "utility";
   if (matchesAny(value, aiAppNames)) return "ai";
@@ -118,6 +127,12 @@ export function classifyApp(appName?: string | null): AppCategory {
   if (matchesAny(value, browserAppNames)) return "browser";
   if (matchesAny(value, workAppNames)) return "work";
   return "unknown";
+}
+
+export function isIdleSystemApp(appName?: string | null): boolean {
+  const value = normalizeAppName(appName);
+  if (!value) return false;
+  return idleSystemAppNames.some((name) => value === name || value.includes(name));
 }
 
 export function normalizeAppCategory(category?: string | null, appName?: string | null): AppCategory {

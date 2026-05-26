@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { FormEvent, MouseEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { buildActivityView } from "./lib/viewModels/activityViewModel";
 import { buildAiImpactView } from "./lib/viewModels/aiImpactViewModel";
-import { isSimpleVisibleApp } from "./lib/viewModels/appClassification";
+import { isIdleSystemApp, isSimpleVisibleApp } from "./lib/viewModels/appClassification";
 import { buildHourTimelineView, normalizeExperienceSettings, type ExperienceSettingsLike } from "./lib/viewModels/hourTimelineViewModel";
 import { buildDeterministicReportMarkdown, buildReportView } from "./lib/viewModels/reportViewModel";
 import { buildReviewView } from "./lib/viewModels/reviewViewModel";
@@ -831,6 +831,10 @@ function compactDisplayLabel(value?: string | null) {
 
 function eventAppLabel(event: BackendSourceEvent) {
   return compactDisplayLabel(event.app ?? event.source);
+}
+
+function isWorkTimelineEvent(event: BackendSourceEvent) {
+  return !isIdleSystemApp(event.app ?? event.source);
 }
 
 function eventContextLabel(event: BackendSourceEvent) {
@@ -2024,6 +2028,10 @@ export default function App() {
     [todaySnapshot?.settings],
   );
   const isSimpleMode = experienceSettings.experienceMode === "simple";
+  const workSourceEvents = useMemo(
+    () => (todaySnapshot?.sourceEvents ?? []).filter(isWorkTimelineEvent),
+    [todaySnapshot?.sourceEvents],
+  );
   const displayApps = useMemo(
     () => {
       const apps = todaySnapshot?.appUsageSummary?.apps ?? [];
@@ -2037,11 +2045,11 @@ export default function App() {
 
   // Most recently captured app — always visible in sidebar even if outside top-8
   const liveAppName = useMemo(() => {
-    const events = todaySnapshot?.sourceEvents ?? [];
+    const events = workSourceEvents;
     if (!events.length) return null;
     const latest = events.reduce((best, ev) => ev.endedAt > best.endedAt ? ev : best);
     return eventAppLabel(latest);
-  }, [todaySnapshot]);
+  }, [workSourceEvents]);
 
   const sidebarApps = useMemo(() => {
     const top8 = displayApps.slice(0, 8);
@@ -3087,7 +3095,7 @@ export default function App() {
               isPaused={isPaused}
               pendingReplyCount={pendingReplyCount}
               selectedStream={latestStream}
-              sourceEvents={todaySnapshot?.sourceEvents ?? []}
+              sourceEvents={workSourceEvents}
               sessions={displaySessions}
               settings={todaySnapshot?.settings}
               snapshot={todaySnapshot}
@@ -3099,7 +3107,7 @@ export default function App() {
           {activeView === "hour" && (
             <HourDetailView
               bucket={
-                buildHourBuckets(todaySnapshot?.sourceEvents ?? [])[
+                buildHourBuckets(workSourceEvents)[
                   activeHourDetail ?? new Date().getHours()
                 ]
               }
@@ -3116,7 +3124,7 @@ export default function App() {
                 activeAppName={activeAppName}
                 setActiveAppName={setActiveAppName}
                 summary={todaySnapshot?.appUsageSummary}
-                sourceEvents={todaySnapshot?.sourceEvents ?? []}
+                sourceEvents={workSourceEvents}
               />
             )
           )}

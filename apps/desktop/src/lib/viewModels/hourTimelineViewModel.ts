@@ -1,4 +1,4 @@
-import { isSimpleVisibleApp } from "./appClassification";
+import { isIdleSystemApp, isSimpleVisibleApp } from "./appClassification";
 import { clampDurationMs, formatDuration } from "./duration";
 
 export type ExperienceMode = "simple" | "pro";
@@ -130,6 +130,7 @@ export function buildHourTimelineView(
   const isPro = normalizedSettings.experienceMode === "pro";
   const includeTechnicalItems = isPro && normalizedSettings.showRawEvents;
   const visibleEvents = sourceEvents.filter((event) => {
+    if (isIdleSystemApp(eventApp(event))) return false;
     if (isPro || normalizedSettings.showSystemApps) return true;
     return isSimpleVisibleApp(eventApp(event));
   });

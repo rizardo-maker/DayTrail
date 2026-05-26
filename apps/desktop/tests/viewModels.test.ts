@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { classifyApp, isSimpleVisibleApp, normalizeAppCategory } from "../src/lib/viewModels/appClassification";
+import {
+  classifyApp,
+  isIdleSystemApp,
+  isSimpleVisibleApp,
+  normalizeAppCategory,
+} from "../src/lib/viewModels/appClassification";
 import { buildActivityView } from "../src/lib/viewModels/activityViewModel";
 import { buildAiImpactView } from "../src/lib/viewModels/aiImpactViewModel";
 import { buildHourTimelineView } from "../src/lib/viewModels/hourTimelineViewModel";
@@ -50,6 +55,9 @@ describe("Simple Mode view models", () => {
   it("classifies system apps and excludes them from simple top work app", () => {
     expect(classifyApp("System Settings")).toBe("system");
     expect(isSimpleVisibleApp("System Settings")).toBe(false);
+    expect(classifyApp("loginwindow")).toBe("idle");
+    expect(isIdleSystemApp("loginwindow")).toBe(true);
+    expect(isSimpleVisibleApp("loginwindow")).toBe(false);
 
     const view = buildTodayView(
       snapshot({
@@ -147,6 +155,32 @@ describe("Simple Mode view models", () => {
     expect(nineAm?.segments.map((segment) => segment.appName)).toEqual(["VS Code", "ChatGPT"]);
     expect(nineAm?.rawItems).toEqual([]);
     expect(nineAm?.aiTools).toContain("ChatGPT");
+  });
+
+  it("does not count lock-screen events as tracked app time", () => {
+    const view = buildHourTimelineView(
+      [
+        {
+          id: "lock-screen",
+          app: "loginwindow",
+          title: "loginwindow",
+          startedAt: new Date(2026, 4, 26, 2, 0).getTime(),
+          endedAt: new Date(2026, 4, 26, 2, 7).getTime(),
+          durationMs: 420_000,
+        },
+      ],
+      {
+        ...baseSettings,
+        experienceMode: "pro",
+        showSystemApps: true,
+        showRawEvents: true,
+      },
+    );
+
+    const twoAm = view.hours.find((hour) => hour.hour === 2);
+    expect(view.totalDurationMs).toBe(0);
+    expect(twoAm?.segments).toEqual([]);
+    expect(twoAm?.rawItems).toEqual([]);
   });
 
   it("uses simple AI impact labels and does not imply generated or accepted output", () => {
