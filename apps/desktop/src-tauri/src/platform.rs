@@ -69,8 +69,12 @@ fn should_skip_launch_at_login_mutation() -> bool {
 
     std::env::current_exe()
         .ok()
-        .map(|path| path.to_string_lossy().contains("/target/debug/deps/"))
+        .map(|path| is_cargo_test_binary_path(&path.to_string_lossy()))
         .unwrap_or(false)
+}
+
+fn is_cargo_test_binary_path(path: &str) -> bool {
+    path.replace('\\', "/").contains("/target/debug/deps/")
 }
 
 #[cfg(target_os = "macos")]
@@ -145,35 +149,57 @@ fn set_launch_at_login_platform(enabled: bool) -> Result<()> {
 
 #[cfg(target_os = "windows")]
 fn set_launch_at_login_platform(enabled: bool) -> Result<()> {
-    let Some(appdata) = std::env::var_os("APPDATA") else {
-        anyhow::bail!("APPDATA is not set");
-    };
-    let startup_dir = std::path::PathBuf::from(appdata)
-        .join("Microsoft")
-        .join("Windows")
-        .join("Start Menu")
-        .join("Programs")
-        .join("Startup");
-    let cmd_path = startup_dir.join("DayTrail.cmd");
+    const RUN_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
+    const VALUE_NAME: &str = "DayTrail";
+
+    let legacy_cmd_path = std::env::var_os("APPDATA").map(|appdata| {
+        std::path::PathBuf::from(appdata)
+            .join("Microsoft")
+            .join("Windows")
+            .join("Start Menu")
+            .join("Programs")
+            .join("Startup")
+            .join("DayTrail.cmd")
+    });
 
     if !enabled {
-        match fs::remove_file(&cmd_path) {
-            Ok(()) => return Ok(()),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-            Err(error) => return Err(error).context("failed to remove startup command"),
+        let _ = Command::new("reg")
+            .args(["delete", RUN_KEY, "/v", VALUE_NAME, "/f"])
+            .status()
+            .context("failed to invoke reg.exe to remove startup entry")?;
+        if let Some(cmd_path) = legacy_cmd_path {
+            match fs::remove_file(&cmd_path) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error).context("failed to remove legacy startup command"),
+            }
         }
+        return Ok(());
     }
 
-    fs::create_dir_all(&startup_dir).context("failed to create Startup directory")?;
     let executable = std::env::current_exe()
         .context("failed to resolve current executable for startup")?
         .display()
         .to_string();
-    fs::write(
-        cmd_path,
-        format!("@echo off\r\nstart \"\" \"{}\"\r\n", executable),
-    )
-    .context("failed to write startup command")
+    let command = format!("\"{executable}\"");
+    let status = Command::new("reg")
+        .args([
+            "add", RUN_KEY, "/v", VALUE_NAME, "/t", "REG_SZ", "/d", &command, "/f",
+        ])
+        .status()
+        .context("failed to invoke reg.exe to create startup entry")?;
+    if !status.success() {
+        return Err(anyhow!("reg.exe failed to create startup entry"));
+    }
+
+    if let Some(cmd_path) = legacy_cmd_path {
+        match fs::remove_file(&cmd_path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error).context("failed to remove legacy startup command"),
+        }
+    }
+    Ok(())
 }
 
 fn xml_escape(value: &str) -> String {
@@ -381,5 +407,21 @@ mod tests {
     #[test]
     fn test_binaries_do_not_mutate_login_items() {
         assert!(should_skip_launch_at_login_mutation());
+    }
+
+    #[test]
+    fn detects_unix_and_windows_cargo_test_binary_paths() {
+        assert!(is_cargo_test_binary_path(
+            "/repo/apps/desktop/src-tauri/target/debug/deps/core_behavior-abc123"
+        ));
+        assert!(is_cargo_test_binary_path(
+            r"C:\repo\apps\desktop\src-tauri\target\debug\deps\core_behavior-abc123.exe"
+        ));
+        assert!(!is_cargo_test_binary_path(
+            r"C:\Program Files\DayTrail\daytrail.exe"
+        ));
+        assert!(!is_cargo_test_binary_path(
+            "/Applications/DayTrail.app/Contents/MacOS/daytrail"
+        ));
     }
 }

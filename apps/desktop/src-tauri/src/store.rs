@@ -6423,7 +6423,7 @@ fn is_self_app_label(value: &str) -> bool {
     clean_app_label(value).is_some_and(|label| label == DISPLAY_APP_NAME)
 }
 
-/// Returns true for macOS system apps that indicate the screen is locked, the
+/// Returns true for system apps that indicate the screen is locked, the
 /// screensaver is running, or the user is otherwise idle/away. Time spent in
 /// these apps must never count as billable work.
 fn is_idle_system_app(value: &str) -> bool {
@@ -6439,6 +6439,12 @@ fn is_idle_system_app(value: &str) -> bool {
             | "com.apple.lockscreen"
             | "systemevents"
             | "com.apple.systemevents"
+            | "lockapp"
+            | "logonui"
+            | "logon ui"
+            | "windows logon application"
+            | "windows security"
+            | "scrnsave"
     )
 }
 
@@ -9379,5 +9385,16 @@ mod tests {
             .checks
             .iter()
             .any(|check| check.id == "os-permissions" && check.status == "ok"));
+    }
+
+    #[test]
+    fn idle_system_apps_include_macos_and_windows_lock_screens() {
+        for app in ["loginwindow", "LockApp", "LogonUI", "Windows Security"] {
+            assert!(is_idle_system_app(app));
+        }
+
+        for app in ["VS Code", "Google Chrome", "Slack"] {
+            assert!(!is_idle_system_app(app));
+        }
     }
 }

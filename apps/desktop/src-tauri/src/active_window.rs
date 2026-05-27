@@ -90,7 +90,30 @@ fn system_idle_ms() -> Option<u64> {
     None
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
+fn system_idle_ms() -> Option<u64> {
+    use windows_sys::Win32::{
+        System::SystemInformation::GetTickCount64,
+        UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO},
+    };
+
+    unsafe {
+        let mut info = LASTINPUTINFO {
+            cbSize: std::mem::size_of::<LASTINPUTINFO>() as u32,
+            dwTime: 0,
+        };
+        if GetLastInputInfo(&mut info) == 0 {
+            return None;
+        }
+
+        // LASTINPUTINFO stores a 32-bit tick count, so use wrapping arithmetic
+        // to stay correct across the normal Windows tick counter rollover.
+        let now = GetTickCount64() as u32;
+        Some(now.wrapping_sub(info.dwTime) as u64)
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn system_idle_ms() -> Option<u64> {
     None
 }
