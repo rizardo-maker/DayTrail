@@ -282,6 +282,7 @@ mod tests {
         for (app_name, bundle_path) in [
             ("VS Code", "/Applications/Visual Studio Code.app"),
             ("ChatGPT", "/Applications/ChatGPT.app"),
+            ("Codex", "/Applications/Codex.app"),
             ("Warp", "/Applications/Warp.app"),
         ] {
             if Path::new(bundle_path).exists() {

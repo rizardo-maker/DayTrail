@@ -1343,23 +1343,15 @@ const DOMAIN_CATEGORY_COLORS: Record<DomainCategory, string> = {
 
 const appIconCache = new Map<string, string | null>();
 
-function specialAppIconName(appName: string) {
-  const normalized = appName.trim().toLowerCase();
-  if (normalized === "codex" || normalized.includes("openai codex")) return "codex";
-  return null;
-}
-
 function AppIcon({ appName, className = "sidebar-app-icon" }: { appName: string; className?: string }) {
-  const specialIcon = specialAppIconName(appName);
   const [iconSrc, setIconSrc] = useState<string | null>(() => {
     const cached = appIconCache.get(appName);
     return cached !== undefined ? cached : null;
   });
-  const [loading, setLoading] = useState(() => !specialIcon && !appIconCache.has(appName));
+  const [loading, setLoading] = useState(() => !appIconCache.has(appName));
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    if (specialIcon) return;
     if (appIconCache.has(appName)) return;
     let cancelled = false;
     invokeTauri<string | null>("get_app_icon", { appName }).then((src) => {
@@ -1377,15 +1369,7 @@ function AppIcon({ appName, className = "sidebar-app-icon" }: { appName: string;
       }
     });
     return () => { cancelled = true; };
-  }, [appName, specialIcon]);
-
-  if (specialIcon === "codex") {
-    return (
-      <span aria-label={appName} className={`${className} fallback-app-icon fallback-app-icon-codex`} role="img">
-        Cx
-      </span>
-    );
-  }
+  }, [appName]);
 
   if (!loading && iconSrc && !failed) {
     return (
