@@ -7,21 +7,32 @@ import test from 'node:test';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
+const isWindows = process.platform === 'win32';
 
 test('terminal bridge writes redacted command metadata', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'worktrace-terminal-'));
   const outFile = join(dir, 'terminal-bridge.json');
 
-  await execFileAsync('./scripts/worktrace-terminal-bridge.sh', [], {
-    env: {
-      ...process.env,
-      WORKTRACE_TERMINAL_BRIDGE: outFile,
-      WORKTRACE_TERMINAL_EVENT: 'command',
-      WORKTRACE_TERMINAL_COMMAND: 'curl https://api.example.test --api-key secret-token',
-      TERM: 'dumb',
-      TERM_PROGRAM: 'dumb',
-    },
-  });
+  const env = {
+    ...process.env,
+    WORKTRACE_TERMINAL_BRIDGE: outFile,
+    WORKTRACE_TERMINAL_EVENT: 'command',
+    WORKTRACE_TERMINAL_COMMAND: 'curl https://api.example.test --api-key secret-token',
+    TERM: 'dumb',
+    TERM_PROGRAM: 'dumb',
+  };
+
+  if (isWindows) {
+    await execFileAsync('powershell', [
+      '-NoProfile',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-File',
+      'scripts/worktrace-terminal-bridge.ps1',
+    ], { env });
+  } else {
+    await execFileAsync('./scripts/worktrace-terminal-bridge.sh', [], { env });
+  }
 
   const metadata = JSON.parse(await readFile(outFile, 'utf8'));
   assert.equal(metadata.eventType, 'command');
@@ -31,6 +42,22 @@ test('terminal bridge writes redacted command metadata', async () => {
 });
 
 test('terminal bridge prints installable shell hooks with absolute script path', async () => {
+  if (isWindows) {
+    const { stdout } = await execFileAsync('powershell', [
+      '-NoProfile',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-File',
+      'scripts/worktrace-terminal-bridge.ps1',
+      '-PrintProfileSnippet',
+    ]);
+
+    assert.match(stdout, /Set-PSReadLineOption -AddToHistoryHandler/);
+    assert.match(stdout, /function global:prompt/);
+    assert.match(stdout, /worktrace-terminal-bridge\.ps1/);
+    return;
+  }
+
   const { stdout: zshHook } = await execFileAsync('./scripts/worktrace-terminal-bridge.sh', [
     '--print-zsh-hook',
   ]);

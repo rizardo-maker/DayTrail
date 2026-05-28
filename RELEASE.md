@@ -29,6 +29,8 @@ Also verify the installed desktop app manually:
 
 ## Windows Distribution
 
+- Run the `Windows Build` GitHub Actions workflow and download the uploaded NSIS/MSI artifacts.
+- For a local Windows artifact build, run `npm run desktop:windows` on a Windows machine.
 - Build NSIS/MSI artifacts on Windows.
 - Sign executable and installer artifacts.
 - Install on a clean Windows account.
@@ -39,4 +41,3 @@ Also verify the installed desktop app manually:
 - Include checksums for every installer/archive.
 - Attach release notes listing supported OS status and known limitations.
 - Do not publish local databases, generated test output, or unsigned artifacts as production builds.
-

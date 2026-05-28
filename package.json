@@ -10,6 +10,7 @@
     "desktop:test": "cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets",
     "desktop:build": "cargo build --manifest-path apps/desktop/src-tauri/Cargo.toml --release",
     "desktop:dmg": "scripts/build-macos-unsigned.sh",
+    "desktop:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows.ps1",
     "browser-extension:check": "node --check apps/browser-extension/src/service_worker.js && node --check apps/browser-extension/src/options.js && node --check apps/browser-extension/src/privacy.js && node --check apps/browser-extension/src/batching.js",
     "browser-extension:pack": "scripts/package-browser-extension.sh",
     "vscode-extension:check": "npm --prefix apps/vscode-extension run check",

@@ -1,0 +1,118 @@
+name: Windows Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: windows-build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  TAURI_CLI_VERSION: 2.11.2
+
+jobs:
+  quality:
+    name: Windows quality gate
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build output
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            apps/desktop/src-tauri -> apps/desktop/src-tauri/target
+
+      - name: Install desktop dependencies
+        run: npm --prefix apps/desktop ci
+
+      - name: Typecheck desktop
+        run: npm --prefix apps/desktop run check
+
+      - name: Test desktop UI
+        run: npm --prefix apps/desktop run test
+
+      - name: Build desktop frontend
+        run: npm --prefix apps/desktop run build
+
+      - name: Check browser bridge extension
+        run: npm run browser-extension:check
+
+      - name: Check editor bridge extension
+        run: npm run vscode-extension:check
+
+      - name: Test packaging and bridge scripts
+        run: npm run test:scripts
+
+      - name: Test Rust workspace
+        run: cargo test --workspace --all-targets
+
+      - name: Test desktop Rust backend
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets
+
+  installer:
+    name: Windows installer
+    runs-on: windows-latest
+    needs: quality
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build output
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            apps/desktop/src-tauri -> apps/desktop/src-tauri/target
+
+      - name: Install desktop dependencies
+        run: npm --prefix apps/desktop ci
+
+      - name: Build desktop frontend
+        run: npm --prefix apps/desktop run build
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version $env:TAURI_CLI_VERSION --locked
+
+      - name: Build NSIS and MSI installers
+        working-directory: apps/desktop
+        run: cargo tauri build --bundles nsis,msi
+
+      - name: Upload Windows installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: daytrail-windows-installers
+          if-no-files-found: error
+          path: |
+            apps/desktop/src-tauri/target/release/bundle/nsis/*.exe
+            apps/desktop/src-tauri/target/release/bundle/msi/*.msi

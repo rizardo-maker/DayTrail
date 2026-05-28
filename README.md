@@ -86,6 +86,17 @@ Build an unsigned macOS app/DMG for internal testing:
 npm run desktop:dmg
 ```
 
+Build Windows installers on a Windows machine:
+
+```powershell
+npm run desktop:windows
+```
+
+This produces NSIS `.exe` and MSI `.msi` installers under
+`apps/desktop/src-tauri/target/release/bundle/`. The GitHub Actions
+`Windows Build` workflow runs the same Windows quality gate and uploads those
+installers as artifacts.
+
 Production distribution still requires platform signing, notarization on macOS, Windows code signing, and release artifact checksums.
 
 ## Browser Bridge
