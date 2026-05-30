@@ -1,3 +1,8 @@
+Status note: this document is the UI/UX target for DayTrail. It is broader
+than the current implementation. The README and release notes describe shipped
+behavior; do not treat every item below as a completed public claim until it is
+covered by tests and release notes.
+
 # DayTrail: Complete UI/UX Specification Document
 
 **Target Architecture:** Tauri v2 Core Shell | React + TypeScript + Tailwind Frontend

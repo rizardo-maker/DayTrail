@@ -19,6 +19,18 @@ Also verify the installed desktop app manually:
 - AI usage appears for observed AI tools and DayTrail-generated reports.
 - Date-range export includes source-backed activity and AI contribution rows.
 
+## Public README And Screenshots
+
+- Root `README.md` explains the product clearly for a first-time user.
+- All six files in `docs/screenshots/` exist and render in the README:
+  `01-today.png`, `02-ai-impact.png`, `03-activity.png`,
+  `04-timeline.png`, `05-reports.png`, and `06-capture-health.png`.
+- Screenshots use realistic demo data and do not expose secrets, private
+  customers, private email addresses, internal IPs, or local-only paths.
+- Platform status and known limitations are accurate for the release being
+  published.
+- Install, build, and verification commands in the README have been checked.
+
 ## macOS Distribution
 
 - Build unsigned internal app/DMG.
