@@ -1056,7 +1056,7 @@ fn codex_context_from_process(root_pid: u32) -> Option<AppContextHint> {
         }
     }
 
-    sessions.sort_by(|left, right| right.0.cmp(&left.0));
+    sessions.sort_by_key(|session| std::cmp::Reverse(session.0));
     sessions
         .into_iter()
         .filter_map(|(_, path)| codex_thread_hint_from_rollout_path(&path))

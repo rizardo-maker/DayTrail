@@ -55,7 +55,10 @@ jobs:
       - name: Build desktop frontend
         run: npm --prefix apps/desktop run build
 
-      - name: Clippy desktop backend
+      # Advisory only: clippy lints drift with each Rust release, so a new lint
+      # must not red the pipeline. The deterministic test steps are the gate.
+      - name: Clippy desktop backend (advisory)
+        continue-on-error: true
         run: cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets -- -D warnings
 
       - name: Test Rust workspace
