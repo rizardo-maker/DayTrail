@@ -37,12 +37,18 @@ the dashboard defaults to today, but the whole history is yours to slice.
 [**Releases page**](https://github.com/varaprasadreddy9676/DayTrail/releases/latest).
 
 > ⚠️ The build is **not notarized** (no paid Apple Developer ID yet), so macOS
-> blocks a normal double-click. It's a one-time step:
+> tags the download and shows **"DayTrail.app is damaged and can't be opened."**
+> It isn't damaged — that's Gatekeeper. Clear it once:
 >
-> 1. Open the DMG, drag **DayTrail** to **Applications**.
-> 2. **Right-click** DayTrail → **Open** → **Open** (or run
->    `xattr -dr com.apple.quarantine /Applications/DayTrail.app`).
-> 3. Grant **Accessibility** and **Allow notifications** on first launch.
+> 1. Open the DMG and drag **DayTrail** into **Applications**.
+> 2. Open **Terminal** and run:
+>    ```bash
+>    xattr -dr com.apple.quarantine /Applications/DayTrail.app
+>    ```
+> 3. Open DayTrail normally, then grant **Accessibility** and **Allow notifications**.
+>
+> (Right-click → Open sometimes works, but the `xattr` command is the reliable
+> fix for the "damaged" message.)
 
 **Windows:** download the `.msi`/`.exe` installer from the same Releases page
 (built by CI). **Other Macs / build from source:** see [Try it](#try-it-build-from-source) below.
