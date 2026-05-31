@@ -12,8 +12,38 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+    paths:
+      - ".github/workflows/windows-release.yml"
+      - "apps/desktop/**"
+      - "apps/browser-extension/**"
+      - "apps/vscode-extension/**"
+      - "crates/**"
+      - "scripts/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "package.json"
+      - "apps/desktop/package.json"
+      - "apps/desktop/package-lock.json"
+      - "!**/node_modules/**"
+      - "!**/*.md"
+      - "!docs/**"
   pull_request:
     branches: [main]
+    paths:
+      - ".github/workflows/windows-release.yml"
+      - "apps/desktop/**"
+      - "apps/browser-extension/**"
+      - "apps/vscode-extension/**"
+      - "crates/**"
+      - "scripts/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "package.json"
+      - "apps/desktop/package.json"
+      - "apps/desktop/package-lock.json"
+      - "!**/node_modules/**"
+      - "!**/*.md"
+      - "!docs/**"
 
 concurrency:
   group: windows-build-${{ github.ref }}
