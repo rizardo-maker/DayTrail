@@ -229,6 +229,7 @@ svg {
   display: inline-flex;
   align-items: center;
   gap: 9px;
+  max-width: 100%;
   margin: 0 0 24px;
   border: 1px solid rgba(31, 199, 217, 0.32);
   border-radius: 999px;
@@ -239,6 +240,12 @@ svg {
   font-size: 14px;
   line-height: 1.2;
   font-weight: 780;
+}
+
+.eyebrow span,
+.privacy-line span {
+  min-width: 0;
+  overflow-wrap: break-word;
 }
 
 .eyebrow svg,
@@ -266,7 +273,7 @@ h1 span {
 }
 
 .hero-subhead {
-  max-width: 560px;
+  max-width: min(560px, 100%);
   margin: 26px 0 0;
   color: var(--soft);
   font-size: 20px;
@@ -356,7 +363,7 @@ h1 span {
   display: flex;
   align-items: flex-start;
   gap: 11px;
-  max-width: 570px;
+  max-width: min(570px, 100%);
   margin: 22px 0 0;
   color: var(--soft);
   font-size: 15px;
@@ -705,7 +712,9 @@ h1 span {
 
 .timeline-segment {
   display: block;
+  height: 100%;
   min-width: 0;
+  animation: timelineReveal 0.74s 1.18s both cubic-bezier(0.2, 0.82, 0.2, 1);
 }
 
 .segment-one {
@@ -714,22 +723,27 @@ h1 span {
 
 .segment-two {
   background: #1fc7d9;
+  animation-delay: 1.24s;
 }
 
 .segment-three {
   background: #8b5cf6;
+  animation-delay: 1.3s;
 }
 
 .segment-four {
   background: #fb7185;
+  animation-delay: 1.36s;
 }
 
 .segment-five {
   background: #22c55e;
+  animation-delay: 1.42s;
 }
 
 .segment-six {
   background: #f59e0b;
+  animation-delay: 1.48s;
 }
 
 .time-axis {
@@ -1011,6 +1025,16 @@ h1 span {
   }
   to {
     transform: translate3d(1.2%, 2%, 0) scale(1.04);
+  }
+}
+
+@keyframes timelineReveal {
+  from {
+    opacity: 0.58;
+  }
+
+  to {
+    opacity: 1;
   }
 }
 

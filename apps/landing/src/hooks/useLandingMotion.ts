@@ -22,7 +22,6 @@ export function useLandingMotion(
       );
 
       gsap.set(revealTargets, { clearProps: "opacity,visibility" });
-      gsap.set(selector(".timeline-segment"), { scaleX: 1, transformOrigin: "left center" });
       gsap.set(selector(".selected-hour"), { x: 0, clearProps: "opacity,visibility" });
       gsap.set(selector(".floating-card"), { y: 0, clearProps: "opacity,visibility" });
 
@@ -32,7 +31,6 @@ export function useLandingMotion(
       }
 
       gsap.set(revealTargets, { y: 18 });
-      gsap.set(selector(".timeline-segment"), { scaleX: 0, transformOrigin: "left center" });
       gsap.set(selector(".selected-hour"), { x: -26 });
       gsap.set(selector(".floating-card"), { y: 16 });
 
@@ -51,7 +49,6 @@ export function useLandingMotion(
         .to(selector(".motion-cta"), { y: 0, duration: 0.56, stagger: 0.06 }, "-=0.34")
         .to(selector(".ribbon-path"), { strokeDashoffset: 0, duration: 1.2, stagger: 0.12 }, "-=0.34")
         .to(selector(".mockup-shell"), { y: 0, duration: 0.76 }, "-=0.92")
-        .to(selector(".timeline-segment"), { scaleX: 1, duration: 0.58, stagger: 0.07 }, "-=0.34")
         .to(selector(".selected-hour"), { x: 0, duration: 0.52 }, "-=0.2")
         .to(selector(".floating-card"), { y: 0, duration: 0.5, stagger: 0.11 }, "-=0.24")
         .to(selector(".app-strip, .proof-band"), { y: 0, duration: 0.5, stagger: 0.1 }, "-=0.2");

@@ -13,7 +13,7 @@ export function HeroCopy() {
           />
           <rect height="10" rx="3" stroke="currentColor" strokeWidth="2" width="14" x="5" y="11" />
         </svg>
-        Private workday memory for Mac and Windows
+        <span>Private workday memory for Mac and Windows</span>
       </p>
 
       <h1 className="motion-copy" id="hero-title">
@@ -89,6 +89,19 @@ export function HeroCopy() {
           </svg>
           Simple + Pro modes
         </span>
+        <span>
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path
+              d="M7 10V8a5 5 0 0 1 10 0v2M6 10h12v10H6V10Z"
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+            />
+            <path d="M12 14v2" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
+          </svg>
+          Bring your own AI key
+        </span>
       </div>
 
       <p className="privacy-line motion-cta" id="privacy">
@@ -100,7 +113,10 @@ export function HeroCopy() {
             strokeWidth="2"
           />
         </svg>
-        Metadata-first. No screenshots. No clipboard capture. Raw details stay hidden until Pro Mode.
+        <span>
+          Metadata-first. No screenshots. No clipboard capture. Bring your own AI key for OpenAI-compatible,
+          Anthropic, Gemini, or local models. Keys stay in your OS keychain.
+        </span>
       </p>
     </div>
   );

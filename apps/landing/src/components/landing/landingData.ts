@@ -7,7 +7,6 @@ export const links = {
 };
 
 export const assets = {
-  brandMark: asset("assets/daytrail-brand.svg"),
   daytrailIcon: asset("assets/daytrail-icon.png"),
   apps: {
     brave: asset("assets/app-icons/brave.png"),

@@ -5,7 +5,7 @@ export function LandingHeader() {
     <header className="landing-header">
       <div className="header-inner">
         <a className="brand" href="#" aria-label="DayTrail home">
-          <img className="brand-mark" src={assets.brandMark} alt="" width="44" height="44" />
+          <img className="brand-mark" src={assets.daytrailIcon} alt="" width="44" height="44" />
           <span className="brand-copy">
             <strong>DayTrail</strong>
             <span>Retrace your workday.</span>
