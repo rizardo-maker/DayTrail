@@ -12,11 +12,13 @@ const buildDir = resolve(__dirname, "build");
 const frameDir = resolve(buildDir, "frames");
 const htmlPath = resolve(__dirname, "storyboard.hyperframes.html");
 const voicePath = resolve(buildDir, "daytrail-demo-voice.aiff");
+const audioBedPath = resolve(buildDir, "daytrail-demo-bed.m4a");
 const tempVideoPath = resolve(buildDir, "daytrail-demo-silent.mp4");
 const outputPath = resolve(outputDir, "daytrail-demo.mp4");
 
 const chromePath = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const ffmpegPath = "ffmpeg";
+const transitionDuration = 0.55;
 
 const scenes = [
   {
@@ -77,38 +79,28 @@ const scenes = [
   },
 ];
 
-const voiceover = `At the end of a busy day, memory lies.
-You remember the big task, not the ten context switches, hidden AI work, or lost hour in a browser.
-DayTrail builds a private timeline automatically from your apps, tabs, editors, terminals, and AI tools.
-Open Today and see what happened, hour by hour.
-Look at yesterday, last week, this month, or any custom range.
-AI Impact shows which tools helped, where they showed up, and what still needs review.
-Activity turns scattered windows into sessions and projects, so standups and reports come from facts, not guesses.
-And if capture breaks, DayTrail tells you before you lose the day.
-Local-first. No timer. No surveillance.
-Just your workday, finally visible.
-Try DayTrail and find out where your time really goes.`;
+const humanVoiceoverScript = `Tone: warm, direct, curious. Do not read like a product ad. Leave room after each sentence.
 
-const brandMark = `<svg class="mark" viewBox="0 0 64 64" aria-hidden="true">
-  <defs>
-    <linearGradient id="markBg" x1="10" y1="8" x2="54" y2="56" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#13283b"/>
-      <stop offset="1" stop-color="#081421"/>
-    </linearGradient>
-    <linearGradient id="markTrail" x1="12" y1="44" x2="53" y2="18" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#18d2c4"/>
-      <stop offset="0.55" stop-color="#1d8cff"/>
-      <stop offset="1" stop-color="#7a6dff"/>
-    </linearGradient>
-  </defs>
-  <rect x="3" y="3" width="58" height="58" rx="17" fill="url(#markBg)" />
-  <rect x="3.5" y="3.5" width="57" height="57" rx="16.5" fill="none" stroke="rgba(255,255,255,0.16)" />
-  <path d="M13 43c7-15 17-19 29-12 5 3 8 2 10-7" fill="none" stroke="url(#markTrail)" stroke-width="5.8" stroke-linecap="round" />
-  <path d="M32 18v15l10 7" fill="none" stroke="#f7fbff" stroke-width="4.8" stroke-linecap="round" stroke-linejoin="round" />
-  <circle cx="32" cy="33" r="4.8" fill="#f7fbff" />
-  <circle cx="13" cy="43" r="4.5" fill="#18d2c4" />
-  <circle cx="52" cy="24" r="4.5" fill="#7a6dff" />
-</svg>`;
+You know that feeling at 6 PM.
+You worked all day, but the day is already blurry.
+Which project took the morning?
+Where did ChatGPT or Codex actually help?
+What should go into the standup tomorrow?
+
+DayTrail remembers the workday for you.
+Not with timers.
+Not with screenshots.
+Just the useful trail: apps, windows, projects, AI work, and the moments that need a second look.
+
+Open Today.
+See the timeline.
+Jump to yesterday, last week, or any range.
+Turn the day into a report when you need it.
+
+DayTrail is the cleanest way to retrace your workday.
+Private by default. Useful the moment you forget.`;
+
+const brandMark = `<img class="mark" src="../../docs/assets/daytrail-icon.png" alt="" />`;
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -205,7 +197,7 @@ async function writeStoryboard() {
     .range-chips, .trust-grid { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 44px; max-width: 900px; }
     .range-chips span, .trust-grid span { border: 1px solid rgba(29, 140, 255, 0.42); background: rgba(29, 140, 255, 0.15); color: #ddecff; border-radius: 14px; padding: 18px 24px; font-size: 28px; font-weight: 750; }
     .brand { position: absolute; z-index: 4; left: 116px; bottom: 74px; display: flex; align-items: center; gap: 18px; color: var(--ink); font-size: 30px; }
-    .mark { width: 60px; height: 60px; flex: 0 0 auto; filter: drop-shadow(0 14px 24px rgba(0, 0, 0, 0.32)); }
+    .mark { width: 60px; height: 60px; flex: 0 0 auto; border-radius: 14px; object-fit: cover; filter: drop-shadow(0 14px 24px rgba(0, 0, 0, 0.32)); }
     .progress { position: absolute; z-index: 5; left: 116px; right: 116px; bottom: 42px; height: 5px; background: rgba(255, 255, 255, 0.12); border-radius: 999px; overflow: hidden; }
     .progress span { display: block; height: 100%; background: linear-gradient(90deg, var(--blue), var(--cyan)); }
     .scanline { position: absolute; inset: 0; z-index: 2; pointer-events: none; opacity: 0.09; background-image: linear-gradient(rgba(255,255,255,.11) 1px, transparent 1px); background-size: 100% 8px; }
@@ -263,7 +255,6 @@ async function renderFrames() {
 }
 
 function buildXfadeFilter() {
-  const transition = 0.55;
   const parts = scenes.map((scene, index) => {
     const fadeOutStart = Math.max(scene.duration - 0.35, 0);
     return `[${index}:v]scale=1920:1080,setsar=1,format=yuv420p,fade=t=in:st=0:d=0.25,fade=t=out:st=${fadeOutStart}:d=0.35[v${index}]`;
@@ -273,12 +264,19 @@ function buildXfadeFilter() {
   let elapsed = scenes[0].duration;
   for (let index = 1; index < scenes.length; index += 1) {
     const output = index === scenes.length - 1 ? "vout" : `x${index}`;
-    const offset = Math.max(elapsed - transition, 0).toFixed(2);
-    parts.push(`[${previous}][v${index}]xfade=transition=fade:duration=${transition}:offset=${offset}[${output}]`);
+    const offset = Math.max(elapsed - transitionDuration, 0).toFixed(2);
+    parts.push(
+      `[${previous}][v${index}]xfade=transition=fade:duration=${transitionDuration}:offset=${offset}[${output}]`,
+    );
     previous = output;
-    elapsed += scenes[index].duration - transition;
+    elapsed += scenes[index].duration - transitionDuration;
   }
   return parts.join(";");
+}
+
+function videoDurationSeconds() {
+  const sceneDuration = scenes.reduce((total, scene) => total + scene.duration, 0);
+  return sceneDuration - transitionDuration * (scenes.length - 1);
 }
 
 async function renderSilentVideo() {
@@ -305,27 +303,88 @@ async function renderSilentVideo() {
 }
 
 async function renderVoiceover() {
-  await writeFile(resolve(__dirname, "voiceover.txt"), `${voiceover}\n`);
-  const say = spawnSync("say", ["-v", "Samantha", "-r", "176", "-o", voicePath, voiceover], {
+  await writeFile(resolve(__dirname, "voiceover.txt"), `${humanVoiceoverScript}\n`);
+
+  if (process.env.DAYTRAIL_DEMO_TTS !== "1") {
+    return false;
+  }
+
+  const previewVoice = process.env.DAYTRAIL_DEMO_TTS_VOICE ?? "Reed (English (US))";
+  const say = spawnSync("say", ["-v", previewVoice, "-r", "158", "-o", voicePath, humanVoiceoverScript], {
     cwd: repoRoot,
     stdio: "inherit",
   });
   return say.status === 0 && existsSync(voicePath);
 }
 
-async function muxAudio(hasVoiceover) {
-  if (!hasVoiceover) {
+async function renderAudioBed() {
+  const duration = videoDurationSeconds();
+  const fadeOutStart = Math.max(duration - 2.8, 0).toFixed(2);
+  const roundedDuration = duration.toFixed(2);
+  run(ffmpegPath, [
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    `aevalsrc=(0.10*sin(2*PI*82.41*t)+0.08*sin(2*PI*123.47*t)+0.055*sin(2*PI*164.81*t)+0.035*sin(2*PI*246.94*t))*(0.56+0.44*sin(2*PI*0.055*t)):s=48000:d=${roundedDuration}`,
+    "-f",
+    "lavfi",
+    "-i",
+    `anoisesrc=color=pink:amplitude=0.018:s=48000:d=${roundedDuration}`,
+    "-filter_complex",
+    `[0:a]lowpass=f=1200,afade=t=in:st=0:d=1.6,afade=t=out:st=${fadeOutStart}:d=2.8[tone];[1:a]lowpass=f=520,afade=t=in:st=0:d=2.2,afade=t=out:st=${fadeOutStart}:d=2.8[noise];[tone][noise]amix=inputs=2:duration=first,volume=0.95,aformat=sample_rates=48000:channel_layouts=stereo[a]`,
+    "-map",
+    "[a]",
+    "-c:a",
+    "aac",
+    "-b:a",
+    "160k",
+    audioBedPath,
+  ]);
+  return existsSync(audioBedPath);
+}
+
+async function muxAudio(hasVoiceover, hasAudioBed) {
+  if (!hasVoiceover && !hasAudioBed) {
     run("cp", [tempVideoPath, outputPath]);
     return;
   }
+
+  if (!hasVoiceover) {
+    run(ffmpegPath, [
+      "-y",
+      "-i",
+      tempVideoPath,
+      "-i",
+      audioBedPath,
+      "-map",
+      "0:v",
+      "-map",
+      "1:a",
+      "-c:v",
+      "copy",
+      "-c:a",
+      "aac",
+      "-b:a",
+      "160k",
+      "-shortest",
+      "-movflags",
+      "+faststart",
+      outputPath,
+    ]);
+    return;
+  }
+
   run(ffmpegPath, [
     "-y",
     "-i",
     tempVideoPath,
     "-i",
+    audioBedPath,
+    "-i",
     voicePath,
     "-filter_complex",
-    "[1:a]volume=1.15,apad[a]",
+    "[1:a]volume=0.28[bed];[2:a]volume=1.04,apad[voice];[bed][voice]amix=inputs=2:duration=first[a]",
     "-map",
     "0:v",
     "-map",
@@ -349,8 +408,9 @@ async function main() {
   await writeStoryboard();
   await renderFrames();
   await renderSilentVideo();
+  const hasAudioBed = await renderAudioBed();
   const hasVoiceover = await renderVoiceover();
-  await muxAudio(hasVoiceover);
+  await muxAudio(hasVoiceover, hasAudioBed);
   console.log(`Rendered ${outputPath}`);
   console.log(`Storyboard ${htmlPath}`);
 }
