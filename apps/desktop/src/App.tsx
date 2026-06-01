@@ -4467,6 +4467,11 @@ function TodayView({
   }, [sourceEvents]);
   const idlePrompt = useMemo(() => {
     const minimumPromptMs = 10 * 60 * 1000;
+    // Don't ask the user to classify sleep. A gap longer than this is almost
+    // always overnight/end-of-day (e.g. working past midnight then back in the
+    // morning), not a "meeting/break/offline work" worth a prompt. Big chunks
+    // can still be logged via "Log offline time".
+    const maximumPromptMs = 4 * 60 * 60 * 1000;
     const now = Date.now();
     for (const gap of dayIdleGaps) {
       const id = `${gap.startMs}-${gap.endMs}`;
@@ -4475,6 +4480,7 @@ function TodayView({
       );
       if (
         gap.durationMs >= minimumPromptMs &&
+        gap.durationMs <= maximumPromptMs &&
         gap.endMs < now - 60_000 &&
         !alreadyCovered &&
         !dismissedIdlePromptIds.has(id)
