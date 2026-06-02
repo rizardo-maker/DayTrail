@@ -7028,6 +7028,94 @@ textarea {
   opacity: 0.85;
 }
 
+/* ── Update available dialog ──────────────────────────────────────────── */
+
+.update-dialog {
+  width: min(460px, calc(100vw - 32px));
+  max-height: calc(100vh - 56px);
+  gap: 16px;
+  padding: 22px;
+  overflow: hidden;
+}
+
+.update-dialog-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.update-dialog-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  flex-shrink: 0;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.18);
+}
+
+.update-dialog-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.update-dialog-heading h3 {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.25;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.update-dialog-versions {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.update-dialog-versions strong {
+  color: var(--text-main);
+  font-weight: 600;
+}
+
+.update-dialog-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--bg-surface, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--border-subtle);
+  max-height: 240px;
+  overflow: auto;
+}
+
+.update-dialog-notes-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.update-dialog-notes-body {
+  margin: 0;
+  font-family: inherit;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-main);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.update-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 2px;
+}
+
 .focus-card {
   margin: 10px 0;
   display: flex;

@@ -10029,6 +10029,7 @@ type UpdateCheckResult = {
   updateAvailable: boolean;
   releaseUrl: string;
   downloadUrl?: string | null;
+  releaseNotes?: string | null;
   error?: string | null;
 };
 
@@ -10098,6 +10099,7 @@ function UpdateChecker() {
   const [version, setVersion] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "checking" | "result">("idle");
   const [result, setResult] = useState<UpdateCheckResult | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
 
   useEffect(() => {
     void invokeTauri<string>("app_version")
@@ -10110,6 +10112,9 @@ function UpdateChecker() {
     try {
       const info = await invokeTauri<UpdateCheckResult>("check_for_updates");
       setResult(info);
+      if (info?.updateAvailable) {
+        setDialogOpen(true);
+      }
     } catch {
       setResult(null);
     }
@@ -10119,38 +10124,124 @@ function UpdateChecker() {
   const openReleases = (url: string) => {
     void invokeTauri("plugin:opener|open_url", { url });
   };
-  const updateLabel = result ? `${updatePromptLabel(result)} - Download` : "Download update";
+
+  // Brief inline status: only used when there is no update or check failed.
+  // When an update is available, the modal carries the message instead.
+  const inlineMessage = (() => {
+    if (status !== "result" || !result || dialogOpen) return null;
+    if (result.error) return "Couldn't check right now.";
+    if (!result.updateAvailable) return "You're on the latest version.";
+    return null;
+  })();
 
   return (
-    <div className="settings-about-card">
-      <span className="settings-about-version">
-        DayTrail{version ? ` v${version}` : ""}
-      </span>
-      <button
-        className="button compact ghost"
-        type="button"
-        onClick={checkNow}
-        disabled={status === "checking"}
-      >
-        {status === "checking" ? "Checking…" : "Check for updates"}
-      </button>
-      {status === "result" && result && (
-        <div className="settings-about-result">
-          {result.error ? (
-            <span>Couldn't check right now.</span>
-          ) : result.updateAvailable ? (
-            <button
-              className="button compact"
-              type="button"
-              onClick={() => openReleases(updateDownloadUrl(result))}
-            >
-              {updateLabel}
-            </button>
-          ) : (
-            <span>You're on the latest version.</span>
-          )}
-        </div>
+    <>
+      <div className="settings-about-card">
+        <span className="settings-about-version">
+          DayTrail{version ? ` v${version}` : ""}
+        </span>
+        <button
+          className="button compact ghost"
+          type="button"
+          onClick={checkNow}
+          disabled={status === "checking"}
+        >
+          {status === "checking" ? "Checking…" : "Check for updates"}
+        </button>
+        {inlineMessage && (
+          <div className="settings-about-result">
+            <span>{inlineMessage}</span>
+          </div>
+        )}
+      </div>
+      {dialogOpen && result && result.updateAvailable && (
+        <UpdateAvailableDialog
+          result={result}
+          onClose={() => setDialogOpen(false)}
+          onDownload={() => {
+            openReleases(updateDownloadUrl(result));
+            setDialogOpen(false);
+          }}
+        />
       )}
+    </>
+  );
+}
+
+function UpdateAvailableDialog({
+  result,
+  onClose,
+  onDownload,
+}: {
+  result: UpdateCheckResult;
+  onClose: () => void;
+  onDownload: () => void;
+}) {
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  const notes = result.releaseNotes?.trim() ?? "";
+  const headline = result.latestVersion
+    ? `DayTrail ${result.latestVersion} is available`
+    : "A new DayTrail build is available";
+  const downloadLabel = result.latestVersion
+    ? `Download v${result.latestVersion}`
+    : "Download update";
+
+  return (
+    <div
+      aria-labelledby="update-dialog-title"
+      aria-modal="true"
+      className="offline-modal-backdrop"
+      onClick={onClose}
+      role="dialog"
+    >
+      <div
+        className="offline-modal update-dialog"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="update-dialog-header">
+          <img alt="" className="update-dialog-icon" src="/daytrail-icon.png" />
+          <div className="update-dialog-heading">
+            <h3 id="update-dialog-title">{headline}</h3>
+            <p className="update-dialog-versions">
+              You're on <strong>v{result.currentVersion}</strong>
+              {result.latestVersion && (
+                <>
+                  {" "}— update to <strong>v{result.latestVersion}</strong>
+                </>
+              )}
+            </p>
+          </div>
+        </div>
+        {notes && (
+          <div className="update-dialog-notes" aria-label="Release notes">
+            <span className="update-dialog-notes-label">What's new</span>
+            <pre className="update-dialog-notes-body">{notes}</pre>
+          </div>
+        )}
+        <div className="update-dialog-actions">
+          <button
+            className="button compact ghost"
+            onClick={onClose}
+            type="button"
+          >
+            Later
+          </button>
+          <button
+            className="button compact primary"
+            onClick={onDownload}
+            type="button"
+          >
+            {downloadLabel}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

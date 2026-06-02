@@ -20,6 +20,8 @@ pub struct UpdateInfo {
     pub update_available: bool,
     pub release_url: String,
     pub download_url: Option<String>,
+    /// Markdown release notes from the GitHub release body, if any.
+    pub release_notes: Option<String>,
     /// Set when the check could not complete (e.g. offline). UI shows this
     /// instead of a misleading "up to date".
     pub error: Option<String>,
@@ -30,6 +32,7 @@ struct GitHubRelease {
     tag_name: String,
     html_url: Option<String>,
     published_at: Option<String>,
+    body: Option<String>,
     #[serde(default)]
     assets: Vec<GitHubReleaseAsset>,
 }
@@ -63,6 +66,7 @@ pub fn check_for_updates() -> Result<UpdateInfo, CommandError> {
         update_available: false,
         release_url: RELEASES_PAGE.to_string(),
         download_url: None,
+        release_notes: None,
         error: None,
     };
 
@@ -78,6 +82,12 @@ pub fn check_for_updates() -> Result<UpdateInfo, CommandError> {
             info.release_url = release.html_url.unwrap_or_else(|| RELEASES_PAGE.to_string());
             info.download_url = release_asset.and_then(|asset| asset.browser_download_url.clone());
             info.latest_build_at = latest_build_at.clone();
+            info.release_notes = release
+                .body
+                .as_deref()
+                .map(str::trim)
+                .filter(|body| !body.is_empty())
+                .map(ToString::to_string);
             info.update_available = is_newer(&normalized, &current)
                 || same_version_rebuild_available(
                     &normalized,
