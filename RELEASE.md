@@ -17,6 +17,14 @@ Also verify the installed desktop app manually:
 - Browser bridge captures domains and redacted URLs.
 - Terminal bridge captures current folder and redacted commands.
 - AI usage appears for observed AI tools and DayTrail-generated reports.
+- Calendar events supplied through local import/integration appear in Today and
+  reconcile against captured work as matched, missed, or partial.
+- Focus Mode nudges still work, and focus timer sessions are persisted with
+  goal, target duration, elapsed time, and drift summary.
+- Away/resume gaps create idle recovery prompts without surfacing sleep-sized
+  gaps as classification work.
+- Daily report, weekly digest, and replay/restore flows generate source-backed
+  output from the expected local date range.
 - Date-range export includes source-backed activity and AI contribution rows.
 
 ## Public README And Screenshots
@@ -27,7 +35,11 @@ Also verify the installed desktop app manually:
   `03-activity.png`, and `06-capture-health.png`.
 - Focus Mode is documented with its current behavior: local distraction nudges,
   native notifications, duration choices, snooze/end controls, and no app
-  blocking.
+  blocking. Persisted focus timer/review behavior is also documented.
+- README claims about calendar support are limited to imported/local events; do
+  not imply Google/Outlook sync unless that connector is actually shipped.
+- README mentions weekly digest, replay/restore, idle recovery, and
+  interruption-friendly positioning consistently with the app UI.
 - Screenshots use realistic demo data and do not expose secrets, private
   customers, private email addresses, internal IPs, or local-only paths.
 - Platform status and known limitations are accurate for the release being

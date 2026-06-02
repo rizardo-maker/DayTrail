@@ -69,6 +69,7 @@ Terminal/agent activity
 Clipboard transitions
 Manual notes
 Idle/away time
+Focus sessions
 Field/client visits
 Documents
 Tasks
@@ -81,6 +82,8 @@ It should produce:
 Work sessions
 Parallel work streams
 Context markers
+Calendar planned-vs-actual reconciliation
+Focus session drift summaries
 Pending replies
 Tasks
 Commitments
@@ -88,6 +91,7 @@ Unclosed loops
 AI-assisted outputs
 Daily reports
 Weekly reports
+Replay / restore summaries
 Decision logs
 Risk register
 Next best actions
@@ -467,7 +471,9 @@ The system shall provide a central dashboard showing the real state of the day.
 
 ```text
 Today’s planned commitments
+Calendar planned-vs-actual status
 Current active work
+Active focus timer / latest focus session
 Parallel active streams
 Completed work
 Pending replies
@@ -480,8 +486,10 @@ Field visits
 Idle/away blocks needing classification
 AI-assisted outputs
 Ghost agent alerts
+Replay / restore entry point
 Next best action
 Generate daily report button
+Generate weekly digest button
 ```
 
 ### Must support actions
@@ -495,9 +503,13 @@ Create commitment
 Generate reply
 Generate MoM
 Generate report
+Generate weekly digest
 Add note
 Classify idle block
+Start focus timer
+Stop focus timer
 Resume context
+Replay day
 ```
 
 ---
@@ -521,6 +533,7 @@ Terminal activity
 Clipboard transitions
 Manual notes
 Idle recovery
+Focus sessions
 Field visits
 ```
 
@@ -1262,6 +1275,10 @@ Recommended commitments:
 ## 5.20 Smart Idle / Away Time Recovery
 
 The system shall detect significant away-from-laptop periods and prompt the user to classify them.
+Return/resume gaps should be persisted as unclassified idle candidates before
+the prompt is shown, so the user can classify them later instead of losing the
+recovery opportunity. Sleep-sized or already-classified gaps should not create
+new prompt work.
 
 ### Prompt
 
@@ -1292,6 +1309,7 @@ Time of day
 Field visit status
 User history
 Recurring patterns
+Persisted unclassified idle candidates
 ```
 
 ### Idle categories
@@ -1311,6 +1329,17 @@ Waiting
 System locked but working elsewhere
 Unknown
 Ignored
+```
+
+### Acceptance behavior
+
+```text
+Prompt after meaningful resume/HID-return gaps
+Prefer persisted unclassified idle candidates over derived guesses
+Suppress prompts while tracking is paused
+Suppress prompts for already-classified gaps
+Suppress sleep-sized away gaps
+Persist ignored gaps as Ignored instead of repeatedly prompting
 ```
 
 ---
@@ -1714,15 +1743,19 @@ High-risk items
 ### Weekly review
 
 ```text
+Last seven local days, not only today
 Committed
 Completed
 Moved
 Missed
+Calendar matched / missed work
+Focus sessions and drift
 AI-assisted completions
 Ad-hoc work impact
 Meeting load
 Risks
 Next week priorities
+Source-backed AI weekly auto-draft when AI is configured
 ```
 
 ---
@@ -1746,6 +1779,10 @@ Tally document was not completed because:
 ## 5.35 Planned vs Actual View
 
 The system shall compare planned work with actual work.
+Calendar events should reconcile against captured apps, projects, domains,
+meetings, focus sessions, and user-labeled context. Matching should support
+clear states such as matched, partial, missed, and untracked, with evidence
+instead of a black-box score.
 
 ### Example
 
@@ -2064,6 +2101,9 @@ You worked on these recently but did not close them:
 ## 5.50 Daily Work Replay
 
 The system shall generate a semantic replay of the day from captured metadata.
+Replay should be useful after interruptions: it must surface the last active
+app/project/task, nearby AI/tool context, idle recovery notes, focus sessions,
+calendar blocks, and concrete next steps for resuming work.
 
 ### Example
 

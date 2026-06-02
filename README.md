@@ -11,13 +11,19 @@ It helps you answer questions like:
 
 - **Where did my day really go?** You'll see the 90 minutes in email and the
   hour on YouTube you'd have sworn was deep work.
+- **Did my plan match reality?** Compare imported calendar blocks with the work
+  DayTrail actually observed, including missed or partially matched events.
 - **What's eating my time?** Spot recurring distractions and time-sinks so you
   can actually cut them.
 - **Can I stay focused right now?** Start a focus block and get a gentle native
-  nudge if you drift into WhatsApp, YouTube, Reddit, or other distractions.
+  nudge if you drift into WhatsApp, YouTube, Reddit, or other distractions;
+  timer sessions are saved so you can review focus drift later.
+- **Can I recover after an interruption?** Replay your day and jump back to the
+  app/project/context you were in before the break.
 - **How much of my work runs through AI** (ChatGPT, Claude, Codex, Copilot…) —
   and on which projects?
 - **What did I do this week** for my standup, client update, or OSS changelog?
+  Generate a source-backed weekly digest, with optional AI drafting.
 - **What routines do I repeat daily** that might be worth streamlining?
 
 Look at **today, yesterday, the last 7 days, this month, or any custom range** —
@@ -99,6 +105,8 @@ use **Fix accessibility** to re-grant it (a macOS update can reset this).
 DayTrail is for people whose work sprawls across too many places to remember —
 IDEs, browser tabs, terminals, Slack, meetings, AI chats, issue trackers, docs,
 and internal tools — and who suspect their time isn't going where they think.
+It is especially useful for interruption-heavy or ADHD-style workdays where the
+hard part is not only tracking time, but recovering context.
 
 **A real example (the kind of person who built this):** a developer with a day
 job *and* open-source side projects, losing track of where the hours go. After a
@@ -108,9 +116,14 @@ day with DayTrail it's obvious — "I thought I shipped features all morning, bu
 - **Cut the time-sinks** you didn't realize were so big (YouTube, inbox, doom-scrolling).
 - **Catch drift while it is happening** with Focus Mode nudges instead of only
   discovering the damage at the end of the day.
+- **Recover context after interruptions** with replay/restore views and
+  unclassified away-time prompts.
+- **Compare planned vs actual work** when calendar events are supplied by a
+  local integration or import.
 - **Separate day-job work from side-project work** without two timers.
 - **Find the routines** you repeat every day and decide what to automate or drop.
-- **Back your standup / invoice / changelog with facts**, not memory.
+- **Back your standup / invoice / changelog / weekly update with facts**, not
+  memory.
 
 Instead of starting and stopping timers, DayTrail builds the trail automatically
 from system metadata: a timeline you can drill into by the hour, app/project/AI
@@ -125,7 +138,8 @@ local memory of your own work** that only you can see.
 
 One glance answers "what did I do today?": what you're on right now (with the real
 document/chat title, not just the app name), time tracked, active apps, AI time,
-and a 24-hour timeline you can drill into hour by hour.
+calendar/focus reconciliation, and a 24-hour timeline you can drill into hour by
+hour.
 
 ### Focus Mode — a gentle nudge before a distraction becomes an hour
 
@@ -134,7 +148,17 @@ and a 24-hour timeline you can drill into hour by hour.
 Start an open-ended, 25-minute, 50-minute, or 90-minute focus block from the
 sidebar. DayTrail keeps watching the same local foreground-window metadata it
 already captures and sends a native notification if you spend too long on known
-distractions. It reminds you; it never blocks apps or sends data anywhere.
+distractions. Persisted focus sessions can also be compared against the actual
+apps/projects used, so you can see whether a block stayed on track. It reminds
+you; it never blocks apps or sends data anywhere.
+
+### Weekly digest and replay — source-backed updates without reconstructing memory
+
+Daily reports, weekly reviews, and replay/restore flows are generated from the
+same local evidence: work sessions, AI usage, outputs, meetings, idle recovery
+notes, focus sessions, and imported calendar events. With an AI provider
+configured, DayTrail can turn the last seven local days into a first draft for a
+standup, client update, or changelog while keeping the source trail visible.
 
 ### AI Impact — how much of your work actually flows through AI
 
@@ -174,10 +198,15 @@ work without storing private content unnecessarily.
   installed.
 - AI tools: detected AI apps, browser tools, editor assistants, and terminal
   agents.
+- Calendar context: event title, location, start/end time, and attendee count
+  when events are supplied by a local integration or import.
 - Manual context: meetings, offline work, client / project / task labels, and
   billable flags.
-- Focus Mode: active focus label, duration choice, off-task time, nudge count,
-  and distraction nudges based on local foreground-window metadata.
+- Idle recovery: away/resume gaps that need classification, plus user-approved
+  notes for meetings, calls, lunch, errands, or ignored time.
+- Focus Mode and focus timer: active focus label, duration choice, persisted
+  focus sessions, off-task time, nudge count, and distraction nudges based on
+  local foreground-window metadata.
 
 ## What It Avoids
 
@@ -197,10 +226,13 @@ See [PRIVACY.md](PRIVACY.md) for the full privacy model.
 2. Browser, editor, and terminal bridges add deeper context where installed.
 3. DayTrail groups events into sessions, hours, apps, projects, sites, and AI
    usage.
-4. You can tag gaps, meetings, or current work context manually.
-5. Focus Mode can nudge you during an active focus block when a distraction
+4. Calendar events and focus sessions are reconciled against captured activity
+   when those local facts exist.
+5. You can tag gaps, meetings, or current work context manually.
+6. Focus Mode can nudge you during an active focus block when a distraction
    pattern is detected.
-6. Reports summarize the captured facts and keep the source trail visible.
+7. Daily reports, weekly digests, and replay/restore views summarize the
+   captured facts and keep the source trail visible.
 
 ## Setup For A Real Trial
 
@@ -211,8 +243,11 @@ See [PRIVACY.md](PRIVACY.md) for the full privacy model.
 4. Install editor and terminal integrations if you want project, file, folder,
    and command context.
 5. Allow notifications if you want Focus Mode and away-time nudges.
-6. Add an optional AI provider in Settings if you want generated reports.
-7. Leave DayTrail running from startup so the day is captured automatically.
+6. Add calendar context through a local integration/import if you want planned
+   vs actual reconciliation.
+7. Add an optional AI provider in Settings if you want generated report drafts
+   and weekly digests.
+8. Leave DayTrail running from startup so the day is captured automatically.
 
 DayTrail is most useful after one full workday of capture.
 

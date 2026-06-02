@@ -189,9 +189,11 @@ Keep screens minimal:
 1. Today Command Center
 2. Parallel Streams
 3. Context Scratchpad
-4. Rituals
-5. Search / Command Bar
-6. Settings
+4. Replay / Context Restore
+5. Rituals
+6. Calendar + Focus Intelligence
+7. Search / Command Bar
+8. Settings
 ```
 
 Do not build 40 screens. Most intelligence should render as markdown panels.
@@ -580,13 +582,16 @@ tasks
 commitments
 email_threads
 meetings
+calendar_events
 field_visits
 idle_blocks
+focus_sessions
 ai_usage
 outputs
 decisions
 quick_notes
 reports
+weekly_reviews
 projects
 people
 work_graph_edges
@@ -626,6 +631,10 @@ ai_helped_output
 decision_from_meeting
 field_visit_created_task
 idle_block_related_to_session
+calendar_event_overlaps_session
+calendar_event_matched_actual_work
+focus_session_contains_session
+focus_session_drifted_to_context
 clipboard_links_sessions
 snapshot_belongs_to_context
 stream_contains_session
@@ -697,6 +706,7 @@ AI tool watcher
 Manual note watcher
 Email connector
 Calendar connector
+Calendar import/upsert bridge
 Meeting watcher
 Field visit watcher
 ```
@@ -1035,9 +1045,42 @@ meeting app active before idle
 field visit active
 common lunch time
 returns to same context
+resume/HID-return gap candidate
+sleep-sized gap suppression
+paused-tracking suppression
 ```
 
-## 14.4 Unclosed loop engine
+## 14.4 Calendar reconciliation engine
+
+Compares imported/local calendar events with observed work sessions.
+
+Rules:
+
+```text
+time overlap
+title/location/app/domain/project signals
+meeting app evidence
+manual work context labels
+substantial overlap without title match
+matched / partial / missed / untracked states
+```
+
+## 14.5 Focus session engine
+
+Summarizes declared focus blocks against actual captured work.
+
+Rules:
+
+```text
+goal/client/project/task/ticket term matching
+target duration vs actual elapsed
+drift context extraction
+off-task/distraction time
+nudge count
+status lifecycle
+```
+
+## 14.6 Unclosed loop engine
 
 Detects:
 
@@ -1051,7 +1094,7 @@ agent failed no follow-up
 state snapshot unresolved
 ```
 
-## 14.5 Stale hypothesis engine
+## 14.7 Stale hypothesis engine
 
 Compares:
 
@@ -1063,7 +1106,7 @@ temporary comments
 debug statements
 ```
 
-## 14.6 Ghost agent engine
+## 14.8 Ghost agent engine
 
 Monitors tagged commands/processes:
 
@@ -1371,8 +1414,10 @@ AI call audit metadata
 Markdown generation
 Daily report
 Weekly report
+AI weekly auto-draft
 Standup report
 Context pack
+Replay / restore summary
 Management summary
 ```
 
@@ -1388,6 +1433,9 @@ Event coalescing
 Session grouping
 Stream grouping
 Idle classification
+Idle resume candidate persistence
+Calendar reconciliation
+Focus session drift summary
 Reply detection
 Commitment detection
 Graph linking
@@ -1402,6 +1450,7 @@ AI prompt → JSON schema validation
 SQLite migration
 FTS search
 Report generation
+Weekly review over last seven local days
 ```
 
 ## 20.3 Scenario tests
@@ -1418,6 +1467,10 @@ Email opened but not replied
 Meeting without notes
 Client visit debrief
 Idle marked as phone call
+Calendar event matched/missed/partial actual work
+Focus session drifted away from declared goal
+Weekly digest with AI draft fallback
+Replay after interruption
 Stale hypothesis warning
 ```
 
@@ -1506,6 +1559,9 @@ Reply debt
 Commitment risks
 Ghost agent alerts
 Recent state snapshots
+Calendar planned-vs-actual
+Active/latest focus session
+Idle recovery prompts
 Next best action
 ```
 
@@ -1518,6 +1574,7 @@ Related AI threads
 Related terminal/git/browser clues
 Scratchpad
 Resume button
+Replay-my-day source trail
 ```
 
 ## 23.3 Rituals
@@ -1526,6 +1583,7 @@ Resume button
 Morning plan
 End-of-day shutdown
 Weekly review
+Weekly digest / AI draft
 Field visit debrief
 Meeting closure
 ```
@@ -1539,6 +1597,10 @@ Meeting closure
 /ai-threads
 /pending
 /eod
+/weekly
+/digest
+/replay
+/focus
 /plan-week
 /stuck
 /commitments
@@ -1555,6 +1617,8 @@ Tauri app
 Rust agent
 SQLite WAL
 source_events
+calendar_events
+focus_sessions
 workspace_contexts
 work_graph_edges
 manual notes
@@ -1570,6 +1634,7 @@ Idle watcher
 Event coalescing
 Batch writes
 Today feed
+Focus timer
 ```
 
 ## Phase 3 — Context recovery
@@ -1579,6 +1644,7 @@ Context scratchpad
 Parallel streams
 State snapshots
 Return-to-work markers
+Replay-my-day view
 Clipboard hash stitching
 ```
 
@@ -1590,6 +1656,7 @@ Ollama adapter
 Markdown panels
 Morning plan
 EOD shutdown
+Weekly digest
 Next best action
 Error-hunt backtrack
 AI thread finder
@@ -1600,6 +1667,7 @@ AI thread finder
 ```text
 Email connector
 Calendar connector
+Calendar reconciliation
 Reply debt
 Commitments
 Unclosed loops

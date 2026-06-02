@@ -1,6 +1,10 @@
 # DayTrail Demo Video
 
 Marketing demo built as a HyperFrames-compatible storyboard and rendered locally.
+The current story should present DayTrail as local-first work memory for
+interruption-heavy days: replay the day, recover context, compare planned
+calendar blocks with actual work, stay on track with Focus Mode, and draft a
+weekly update from source-backed evidence.
 
 ```bash
 node marketing/daytrail-demo/render-demo-video.mjs

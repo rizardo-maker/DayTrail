@@ -12,6 +12,8 @@ The core user questions are:
 4. **Inside an app, what exactly was I working on?**
 5. **Where did I use AI tools like Copilot, Codex, Claude, ChatGPT, Cursor, Gemini?**
 6. **What should I follow up on?**
+7. **Did my calendar/focus plan match what I actually did?**
+8. **How do I replay the last hour after an interruption?**
 
 The current app captures useful data, but the UI makes everything feel equally important. The redesign should use **progressive disclosure**:
 
@@ -44,6 +46,8 @@ The Today screen should have:
 Top summary cards
 ↓
 Large 24-hour timeline
+↓
+Calendar/focus intelligence + idle recovery prompts
 ↓
 Insights + top apps + recent highlights
 ```
@@ -104,6 +108,7 @@ Move these into better places:
 | Usage by app       | Move below timeline as “Top apps today”       |
 | Attention          | Move to Follow-ups screen                     |
 | Recent work        | Convert into “Recent highlights” cards        |
+| Calendar/focus status | Keep near Today summary and selected-hour context |
 
 ### E. Replace “Last captured activity” with compact live status
 
