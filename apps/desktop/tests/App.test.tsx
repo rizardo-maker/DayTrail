@@ -1128,6 +1128,11 @@ describe("DayTrail command center", () => {
     expect(screen.getAllByText(/chatgpt/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/today timeline/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/google chrome/i).length).toBeGreaterThan(0);
+    expect(
+      Array.from(document.querySelectorAll("[data-tooltip]")).some((node) =>
+        node.getAttribute("data-tooltip")?.match(/Google Chrome · 5m · AI: ChatGPT/i),
+      ),
+    ).toBe(true);
 
     const dayTrackerRow = screen.getAllByText(/10 AM/i)
       .map((node) => node.closest("button"))
@@ -1148,6 +1153,7 @@ describe("DayTrail command center", () => {
     await user.click(screen.getByRole("button", { name: /close session details/i }));
 
     await user.click(screen.getByRole("button", { name: /view full hour breakdown/i }));
+    expect(screen.getByRole("img", { name: /Google Chrome · 5m/i })).toBeInTheDocument();
     const chromeHourRow = screen.getAllByText(/google chrome/i)
       .map((node) => node.closest("button"))
       .find((node): node is HTMLButtonElement => Boolean(node?.getAttribute("aria-label")?.match(/breakdown/i)));

@@ -2392,6 +2392,11 @@ function taskContextLabel(task: BackendTask) {
   return [task.clientLabel, task.projectLabel].filter(Boolean).join(" · ") || task.source || "Backlog";
 }
 
+function timelineSegmentLabel(label: string, durationMs: number, details?: string[]) {
+  const suffix = details && details.length > 0 ? ` · ${details.join(", ")}` : "";
+  return `${label} · ${formatDuration(durationMs)}${suffix}`;
+}
+
 // ── Work Context Editor ───────────────────────────────────────────────────────
 
 interface WorkContextForm {
@@ -5759,12 +5764,19 @@ function HourlyTimelinePanel({
                 <span className="hour-row-fill" style={{ width: `${hourFillPercent}%` }}>
                   {bucket.apps.map((app) => {
                     const width = Math.max(6, Math.round((app.durationMs / Math.max(bucket.durationMs, 1)) * 100));
+                    const segmentLabel = timelineSegmentLabel(
+                      app.app,
+                      app.durationMs,
+                      app.aiTools.length ? [`AI: ${app.aiTools.join(", ")}`] : undefined,
+                    );
                     return (
                       <span
+                        aria-label={segmentLabel}
                         className="hour-segment"
+                        data-tooltip={segmentLabel}
                         key={app.app}
                         style={{ background: appColor(app.app), width: `${width}%` }}
-                        title={`${app.app}: ${formatDuration(app.durationMs)}${app.aiTools.length ? ` · AI: ${app.aiTools.join(", ")}` : ""}`}
+                        title={segmentLabel}
                       >
                         <span />
                       </span>
@@ -6183,25 +6195,36 @@ function HourDetailView({
               {bucket.apps.length === 0 && bucket.manualBlocks.length === 0 && <span className="within-hour-empty" />}
               {bucket.manualBlocks.length > 0 && bucket.apps.length === 0 && bucket.manualBlocks.map((block) => (
                 <span
+                  aria-label={timelineSegmentLabel(manualBlockTitle(block), block.durationMs, [block.category])}
                   className="within-hour-segment manual-time-segment"
+                  data-tooltip={timelineSegmentLabel(manualBlockTitle(block), block.durationMs, [block.category])}
                   key={block.id}
+                  role="img"
                   style={{
                     width: `${Math.max(4, Math.round((bucket.manualDurationMs / Math.max(effectiveDuration, 1)) * 100))}%`,
                   }}
-                  title={`${block.category}: ${manualBlockTitle(block)}`}
+                  title={timelineSegmentLabel(manualBlockTitle(block), block.durationMs, [block.category])}
+                  tabIndex={0}
                 />
               ))}
-              {bucket.apps.map((app) => (
-                <span
-                  className="within-hour-segment"
-                  key={app.app}
-                  style={{
-                    background: appColor(app.app),
-                    width: `${Math.max(4, Math.round((app.durationMs / Math.max(bucket.durationMs, 1)) * 100))}%`,
-                  }}
-                  title={`${app.app}: ${formatDuration(app.durationMs)}`}
-                />
-              ))}
+              {bucket.apps.map((app) => {
+                const segmentLabel = timelineSegmentLabel(app.app, app.durationMs);
+                return (
+                  <span
+                    aria-label={segmentLabel}
+                    className="within-hour-segment"
+                    data-tooltip={segmentLabel}
+                    key={app.app}
+                    role="img"
+                    style={{
+                      background: appColor(app.app),
+                      width: `${Math.max(4, Math.round((app.durationMs / Math.max(bucket.durationMs, 1)) * 100))}%`,
+                    }}
+                    title={segmentLabel}
+                    tabIndex={0}
+                  />
+                );
+              })}
             </div>
           </section>
 
