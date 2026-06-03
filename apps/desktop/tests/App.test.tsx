@@ -644,6 +644,70 @@ describe("DayTrail command center", () => {
     expect(invoke).toHaveBeenCalledWith("delete_task", { id: 42 });
   });
 
+  it("keeps the open tasks list scrollable when many tasks exist", async () => {
+    const user = userEvent.setup();
+    const tasks = Array.from({ length: 12 }, (_, index) => ({
+      id: index + 1,
+      title: `Urgent backlog item ${index + 1}`,
+      status: "open",
+      dueDate: null,
+      dueAt: null,
+      notes: "bulk-import",
+      priority: "high",
+      source: "bulk-import",
+      projectPath: null,
+      clientLabel: null,
+      projectLabel: null,
+      reminderSentAt: null,
+      createdAt: "2026-06-02T09:00:00Z",
+      updatedAt: "2026-06-02T09:00:00Z",
+    }));
+    const invoke = vi.fn(async (command: string) => {
+      if (command === "today") {
+        return {
+          localDate: "2026-06-02",
+          tasks,
+          quickNotes: [],
+          commitments: [],
+          pendingReplies: [],
+          aiOutputs: [],
+          meetings: [],
+          fieldVisits: [],
+          idleBlocks: [],
+          sourceEvents: [],
+          workSessions: [],
+          parallelStreams: [],
+          nextBestAction: null,
+          pauseState: { paused: false },
+          settings: { browserBridgeEnabled: true, excludedDomains: [] },
+          projectContext: null,
+        };
+      }
+      return null;
+    });
+
+    window.__TAURI__ = {
+      core: {
+        invoke: invoke as unknown as <T>(
+          command: string,
+          args?: Record<string, unknown>,
+        ) => Promise<T>,
+      },
+    };
+
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: /^my tasks$/i }));
+    expect(await screen.findByText(/urgent backlog item 12/i)).toBeInTheDocument();
+
+    const openTasksSection = screen.getByLabelText(/^open tasks$/i);
+    const openTasksList = openTasksSection.querySelector(".tasks-list");
+    expect(openTasksList).toBeInstanceOf(HTMLElement);
+
+    expect(openTasksList).toHaveAttribute("data-scrollable", "true");
+    expect(openTasksList).toHaveAttribute("tabindex", "0");
+  });
+
   it("shows the 24-hour timeline for a selected single-day range", async () => {
     const user = userEvent.setup();
     const settings = {

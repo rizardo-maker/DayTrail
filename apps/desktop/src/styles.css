@@ -7516,6 +7516,7 @@ textarea {
 
 .tasks-section {
   display: grid;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -7538,8 +7539,14 @@ textarea {
 
 .tasks-list {
   display: grid;
+  max-height: min(52vh, 520px);
+  min-height: 0;
+  align-content: start;
   gap: 8px;
+  overflow-y: auto;
   padding: 12px;
+  scrollbar-color: var(--border-strong) transparent;
+  scrollbar-width: thin;
 }
 
 .task-row {

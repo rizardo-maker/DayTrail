@@ -6071,7 +6071,12 @@ function TaskListSection({
           <span>{emptyText}</span>
         </div>
       ) : (
-        <div className="tasks-list">
+        <div
+          aria-label={`${title} list`}
+          className="tasks-list"
+          data-scrollable={tasks.length > 5 ? "true" : undefined}
+          tabIndex={tasks.length > 5 ? 0 : undefined}
+        >
           {tasks.map((task) => (
             <article
               className="task-row"
