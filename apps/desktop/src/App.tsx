@@ -4838,7 +4838,8 @@ function PermissionSetupView({
             <ol className="permission-steps">
               <li>Click <strong>Fix accessibility</strong> below to open <strong>Privacy & Security &gt; Accessibility</strong>.</li>
               <li>Remove or toggle off any old <strong>DayTrail</strong> entry.</li>
-              <li>Enable this exact app: <strong>{summary.appPath ?? "/Applications/DayTrail.app"}</strong>.</li>
+              <li>If <strong>DayTrail</strong> is missing, click the <strong>+</strong> button at the bottom-left of that list and choose <strong>{summary.appPath ?? "/Applications/DayTrail.app"}</strong>.</li>
+              <li>Turn on the switch for <strong>DayTrail.app</strong>.</li>
               <li>Switch back to DayTrail and click <strong>Recheck</strong>.</li>
             </ol>
           )}
@@ -4984,6 +4985,9 @@ function PermissionStatusList({
             </span>
             <span>
               Enable this exact app: <strong>{summary.appPath}</strong>
+            </span>
+            <span>
+              Missing from the list? Click <strong>+</strong> in Accessibility Settings and select <strong>{summary.appPath}</strong>.
             </span>
             <button className="button compact" onClick={copyAppPath} type="button">
               <Icon name="copy" />

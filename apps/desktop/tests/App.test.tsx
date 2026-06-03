@@ -1810,6 +1810,7 @@ describe("DayTrail command center", () => {
       restartRecommended: true,
       diagnostics: [
         "Enable Accessibility for this exact app: /Applications/DayTrail.app",
+        "If DayTrail is missing from Accessibility Settings, click + and select /Applications/DayTrail.app.",
         "If DayTrail is already enabled, quit and reopen the same app copy, then recheck.",
       ],
       checks: [
@@ -1900,6 +1901,7 @@ describe("DayTrail command center", () => {
     expect(await screen.findByRole("heading", { name: /allow app and window tracking|still not detected/i })).toBeInTheDocument();
     expect(screen.getAllByText(/privacy & security > accessibility/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/\/applications\/daytrail\.app/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/click \+/i).length).toBeGreaterThan(0);
     expect(screen.getAllByRole("button", { name: /restart app/i }).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/browser tab context/i).length).toBeGreaterThan(0);
     expect(screen.queryByRole("heading", { name: /^today$/i })).not.toBeInTheDocument();

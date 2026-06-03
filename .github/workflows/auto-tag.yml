@@ -1,15 +1,13 @@
 name: Auto-tag release
 
-# Every product push to main should become a desktop release. If the push
-# already includes a new desktop version, this workflow tags that version. If
-# the current version already has a tag, it bumps the patch version, commits
-# that metadata change back to main, tags it, and dispatches platform builds.
+# Manually create a desktop release. If the current desktop version is already
+# tagged, this workflow bumps the patch version, commits that metadata change
+# back to main, tags it, and dispatches platform builds.
 #
 # Generated github-actions[bot] pushes are skipped to avoid release loops.
 
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: auto-tag-${{ github.ref }}
@@ -21,7 +19,7 @@ permissions:
 
 jobs:
   tag:
-    if: github.actor != 'github-actions[bot]' && !startsWith(github.event.head_commit.message, 'chore(release):')
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

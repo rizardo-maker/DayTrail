@@ -117,6 +117,9 @@ fn permission_diagnostics(
         diagnostics.push(format!(
             "Enable Accessibility for this exact app: {app_path}"
         ));
+        diagnostics.push(format!(
+            "If DayTrail is missing from Accessibility Settings, click + and select {app_path}."
+        ));
         if !app_path.starts_with("/Applications/") {
             diagnostics.push(
                 "This copy is not running from /Applications. macOS can show another DayTrail entry for a different copy.".to_string(),
