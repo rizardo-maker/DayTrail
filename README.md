@@ -38,8 +38,13 @@ the dashboard defaults to today, but the whole history is yours to slice.
 [![Windows Build](https://github.com/varaprasadreddy9676/DayTrail/actions/workflows/windows-release.yml/badge.svg)](https://github.com/varaprasadreddy9676/DayTrail/actions/workflows/windows-release.yml)
 [![macOS Build](https://github.com/varaprasadreddy9676/DayTrail/actions/workflows/macos-release.yml/badge.svg)](https://github.com/varaprasadreddy9676/DayTrail/actions/workflows/macos-release.yml)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
+[![GitHub release downloads](https://img.shields.io/github/downloads/varaprasadreddy9676/DayTrail/total?label=installer%20downloads&color=2ea44f&logo=github)](https://github.com/varaprasadreddy9676/DayTrail/releases)
+[![Latest release downloads](https://img.shields.io/github/downloads/varaprasadreddy9676/DayTrail/latest/total?label=latest%20release&color=0969da&logo=github)](https://github.com/varaprasadreddy9676/DayTrail/releases/latest)
 [![Download for macOS](https://img.shields.io/github/v/release/varaprasadreddy9676/DayTrail?label=Download%20macOS&color=2ea44f&logo=apple)](https://github.com/varaprasadreddy9676/DayTrail/releases/latest)
 [![Support on Ko-fi](https://img.shields.io/badge/Support-Ko--fi-ff5e5b?logo=ko-fi&logoColor=white)](https://ko-fi.com/iamsai)
+
+The download badges are live GitHub release asset counts. They count installer
+downloads across releases, not unique users.
 
 ## Lightweight By Design
 
