@@ -26,6 +26,9 @@ It helps you answer questions like:
   and on which projects?
 - **What did I do this week** for my standup, client update, or OSS changelog?
   Generate a source-backed weekly digest, with optional AI drafting.
+- **Which activities belong to this task?** Link recorded activities to tasks
+  manually, or set up match rules (keyword, wildcard, regex) to auto-link them
+  as they are captured.
 - **What routines do I repeat daily** that might be worth streamlining?
 
 Look at **today, yesterday, the last 7 days, this month, or any custom range** —
@@ -62,22 +65,26 @@ produces installers under **6 MB** (`.exe` about **4.5 MB**, `.msi` about
 
 ## Download
 
-**macOS (Apple Silicon):** grab the latest `.dmg` from the
+**macOS (Apple Silicon) — Homebrew (recommended):**
+
+```sh
+brew tap varaprasadreddy9676/tap
+brew install --cask daytrail
+```
+
+Homebrew handles quarantine and future updates (`brew upgrade --cask daytrail`).
+
+**macOS (Apple Silicon) — direct DMG:** grab the latest `.dmg` from the
 [**Releases page**](https://github.com/varaprasadreddy9676/DayTrail/releases/latest).
 
 > ⚠️ The build is **not notarized** (no paid Apple Developer ID yet), so macOS
-> tags the download and shows **"DayTrail.app is damaged and can't be opened."**
-> It isn't damaged — that's Gatekeeper. Clear it once:
+> may show **"DayTrail.app is damaged and can't be opened."** It isn't damaged —
+> that's Gatekeeper. DayTrail clears the quarantine flag automatically on first
+> launch, but if the app won't open at all, run this once in Terminal:
 >
-> 1. Open the DMG and drag **DayTrail** into **Applications**.
-> 2. Open **Terminal** and run:
->    ```bash
->    xattr -dr com.apple.quarantine /Applications/DayTrail.app
->    ```
-> 3. Open DayTrail normally, then grant **Accessibility** and **Allow notifications**.
->
-> (Right-click → Open sometimes works, but the `xattr` command is the reliable
-> fix for the "damaged" message.)
+> ```bash
+> xattr -dr com.apple.quarantine /Applications/DayTrail.app
+> ```
 
 **Windows:** download the `.msi`/`.exe` installer from the same Releases page
 (built by CI). **Other Macs / build from source:** see [Try it](#try-it-build-from-source) below.
@@ -88,14 +95,16 @@ produces installers under **6 MB** (`.exe` about **4.5 MB**, `.msi` about
 <summary><b>macOS: "DayTrail.app is damaged and can't be opened. You should move it to the Trash."</b></summary>
 
 It is **not** damaged. Because the app isn't notarized (no paid Apple Developer
-ID), macOS quarantines the download and shows this scary message. Fix it once:
+ID), macOS quarantines the download. DayTrail removes the quarantine flag
+automatically on first launch. If the app won't open at all, run this once in
+Terminal, then open DayTrail normally:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/DayTrail.app
 ```
 
-Then open DayTrail normally. (Drag it into **Applications** first if you haven't.
-If you downloaded with a non-Safari browser, this is the expected behavior.)
+(Drag it into **Applications** first if you haven't. Using Homebrew avoids this
+entirely — see [Download](#download).)
 </details>
 
 <details>
@@ -270,8 +279,8 @@ See [PRIVACY.md](PRIVACY.md) for the full privacy model.
    and command context.
 5. Allow notifications if you want Focus Mode, Smart Breaks, and away-time
    nudges.
-6. DayTrail checks for available releases on startup and can remind you again
-   after 8 hours when an update is available.
+6. DayTrail checks for available releases on startup and whenever you return to
+   the app, and can remind you again after 8 hours when an update is available.
 7. Add an optional AI provider in Settings if you want generated report drafts
    and weekly digests.
 8. Leave DayTrail running from startup so the day is captured automatically.

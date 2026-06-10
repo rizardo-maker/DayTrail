@@ -39,8 +39,8 @@ Also verify the installed desktop app manually:
   calls or presentation-like contexts.
 - Away/resume gaps create idle recovery prompts without surfacing sleep-sized
   gaps as classification work.
-- Startup update checks surface available builds automatically and allow an
-  8-hour reminder pause.
+- Startup and focus-return update checks surface available builds automatically
+  and allow an 8-hour reminder pause.
 - Daily report, weekly digest, and replay/restore flows generate source-backed
   output from the expected local date range, including weekly Smart Breaks.
 - Date-range export includes source-backed activity and AI contribution rows.
@@ -70,11 +70,16 @@ Also verify the installed desktop app manually:
 
 ## macOS Distribution
 
-- Build unsigned internal app/DMG.
-- Sign with Developer ID Application.
-- Notarize with Apple.
-- Staple notarization ticket.
-- Verify Gatekeeper on a clean macOS user account.
+- Build unsigned DMG via CI (`Auto-tag release` workflow) or locally with
+  `npm run desktop:dmg`.
+- DayTrail strips its own quarantine xattr on first launch, so the `xattr`
+  manual step is no longer required for most users.
+- Verify Gatekeeper behaviour: app should open after the first-launch
+  quarantine strip without requiring the user to run `xattr` manually.
+- Confirm the Homebrew cask in `varaprasadreddy9676/homebrew-tap` was updated
+  automatically by CI (check for a new commit to `Casks/daytrail.rb`).
+- Homebrew install path (`brew install --cask daytrail`) should work and
+  install the correct version without any quarantine warning.
 
 ## Windows Distribution
 
