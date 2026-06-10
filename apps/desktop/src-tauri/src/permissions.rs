@@ -500,17 +500,16 @@ pub fn ensure_accessibility_permission() {
 pub fn reset_and_request_accessibility() -> Result<CapturePermissionSummary> {
     #[cfg(target_os = "macos")]
     {
-        // Reset the stale TCC grant (e.g. after a binary update invalidated the signature).
-        // This clears the entry so macOS will prompt fresh on the next trust check.
+        // Reset the stale TCC grant so macOS treats this as a fresh request.
         let _ = std::process::Command::new("tccutil")
             .args(["reset", "Accessibility", "ai.daytrail.desktop"])
             .status();
 
-        // Open the settings pane so the user can toggle the switch on. Do not
-        // also trigger the macOS prompt; it can appear behind System Settings.
-        let _ = std::process::Command::new("open")
-            .arg(ACCESSIBILITY_URL)
-            .status();
+        // Call AXIsProcessTrustedWithOptions with the prompt flag. This is the
+        // official macOS API that (a) auto-adds DayTrail to the Accessibility
+        // list and (b) opens System Settings to that exact row — so the user
+        // just flips the toggle rather than manually finding and adding the app.
+        macos_request_accessibility_with_prompt();
 
         Ok(capture_permission_summary())
     }
@@ -518,6 +517,26 @@ pub fn reset_and_request_accessibility() -> Result<CapturePermissionSummary> {
     #[cfg(not(target_os = "macos"))]
     {
         Ok(capture_permission_summary())
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn macos_request_accessibility_with_prompt() {
+    use core_foundation::base::TCFType;
+    use core_foundation::boolean::CFBoolean;
+    use core_foundation::dictionary::CFDictionary;
+    use core_foundation::string::CFString;
+
+    #[link(name = "ApplicationServices", kind = "framework")]
+    extern "C" {
+        fn AXIsProcessTrustedWithOptions(options: core_foundation_sys::base::CFTypeRef) -> u8;
+    }
+
+    let key = CFString::new("AXTrustedCheckOptionPrompt");
+    let val = CFBoolean::true_value();
+    let dict = CFDictionary::from_CFType_pairs(&[(key.as_CFType(), val.as_CFType())]);
+    unsafe {
+        AXIsProcessTrustedWithOptions(dict.as_CFTypeRef());
     }
 }
 
