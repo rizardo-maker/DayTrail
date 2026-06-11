@@ -123,6 +123,7 @@ type BackendSettings = {
   aiProvider?: string;
   aiModel?: string;
   aiEndpoint?: string;
+  aiApiKeyRef?: string;
   aiRedactSecrets?: boolean;
   fullClipboardHistory?: boolean;
   experienceMode?: "simple" | "pro";
@@ -826,6 +827,7 @@ type AiConfig = {
   model: string;
   endpoint: string;
   apiKey: string;
+  apiKeyStored: boolean;
   redactSecrets: boolean;
   fullClipboard: boolean;
 };
@@ -928,6 +930,7 @@ const defaultAiConfig: AiConfig = {
   provider: "Ollama Local",
   ...providerDefaults["Ollama Local"],
   apiKey: "",
+  apiKeyStored: false,
   redactSecrets: true,
   fullClipboard: false,
 };
@@ -2446,6 +2449,7 @@ function mapAiConfig(settings?: BackendSettings): AiConfig {
       ? configuredEndpoint
       : defaultEndpointForProvider(provider),
     apiKey: "",
+    apiKeyStored: !!settings.aiApiKeyRef,
     redactSecrets: settings.aiRedactSecrets ?? defaultAiConfig.redactSecrets,
     fullClipboard: settings.fullClipboardHistory ?? defaultAiConfig.fullClipboard,
   };
@@ -8235,7 +8239,7 @@ function ChatView({
   }, [messages, loading]);
 
   const isLocal = aiConfig.provider === "Ollama Local" || aiConfig.provider === "LM Studio";
-  const isConfigured = isLocal || aiConfig.apiKey.trim().length > 0;
+  const isConfigured = isLocal || aiConfig.apiKeyStored || aiConfig.apiKey.trim().length > 0;
   const providerLabel = aiConfig.model.trim()
     ? `${aiConfig.provider} · ${aiConfig.model}`
     : aiConfig.provider;
@@ -10606,7 +10610,7 @@ function SettingsView({
                     autoComplete="off"
                     id="api-key"
                     onChange={(event) => setAiConfig({ ...aiConfig, apiKey: event.target.value })}
-                    placeholder="Stored in OS keychain"
+                    placeholder={aiConfig.apiKeyStored ? "Stored in OS keychain" : "Paste your API key"}
                     type="password"
                     value={aiConfig.apiKey}
                   />
