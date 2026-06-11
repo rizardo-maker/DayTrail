@@ -17,7 +17,8 @@ export type IconName =
   | "sliders"
   | "sync"
   | "warning"
-  | "x";
+  | "x"
+  | "zap";
 
 export function Icon({ name }: { name: IconName }) {
   const pathByName: Record<IconName, ReactNode> = {
@@ -100,6 +101,7 @@ export function Icon({ name }: { name: IconName }) {
       </>
     ),
     x: <path d="M6 6l12 12M18 6 6 18" />,
+    zap: <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />,
   };
 
   return (

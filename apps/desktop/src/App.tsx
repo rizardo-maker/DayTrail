@@ -26,7 +26,6 @@ type ViewKey =
   | "tasks"
   | "hour"
   | "apps"
-  | "loops"
   | "ai"
   | "automation"
   | "restore"
@@ -844,8 +843,8 @@ const navigation: Array<{ id: ViewKey; label: string; icon: IconName }> = [
   { id: "insights", label: "Insights", icon: "bell" },
   { id: "chat", label: "Ask AI", icon: "chat" },
   { id: "apps", label: "Activity", icon: "apps" },
-  { id: "ai", label: "AI Impact", icon: "ritual" },
-  { id: "restore", label: "Replay", icon: "search" },
+  { id: "ai", label: "AI Impact", icon: "zap" },
+  { id: "restore", label: "Replay", icon: "return" },
   { id: "review", label: "Review Queue", icon: "archive" },
   { id: "rituals", label: "Reports", icon: "ritual" },
   { id: "settings", label: "Settings", icon: "sliders" },
@@ -2872,6 +2871,12 @@ export default function App() {
   );
 
   const currentView = navigation.find((item) => item.id === activeView);
+  const effectiveNavView: ViewKey =
+    activeView === "memory" ? "settings"
+    : activeView === "automation" ? "rituals"
+    : activeView === "hour" ? "today"
+    : activeView;
+
   const currentViewLabel =
     currentView?.label ??
     (activeView === "automation"
@@ -4305,7 +4310,7 @@ export default function App() {
           {navigation.map((item) => (
             <button
               aria-label={item.label}
-              aria-current={activeView === item.id ? "page" : undefined}
+              aria-current={effectiveNavView === item.id ? "page" : undefined}
               className="nav-item"
               key={item.id}
               onClick={() => {
@@ -4406,26 +4411,30 @@ export default function App() {
               <kbd>⌥ Space</kbd>
               <kbd>⌘K</kbd>
             </button>
-            <button
-              className="button primary"
-              onClick={() => generateRitual("daily")}
-              aria-label="Generate daily report"
-              title="Generate end-of-day report"
-              type="button"
-            >
-              <Icon name="ritual" />
-              <span className="button-label">Daily report</span>
-            </button>
-            <button
-              className="button"
-              onClick={() => generateRitual("weekly")}
-              aria-label="Generate weekly digest"
-              title="Generate weekly digest"
-              type="button"
-            >
-              <Icon name="archive" />
-              <span className="button-label">Weekly digest</span>
-            </button>
+            {activeView === "rituals" && (
+              <>
+                <button
+                  className="button primary"
+                  onClick={() => generateRitual("daily")}
+                  aria-label="Generate daily report"
+                  title="Generate end-of-day report"
+                  type="button"
+                >
+                  <Icon name="ritual" />
+                  <span className="button-label">Daily report</span>
+                </button>
+                <button
+                  className="button"
+                  onClick={() => generateRitual("weekly")}
+                  aria-label="Generate weekly digest"
+                  title="Generate weekly digest"
+                  type="button"
+                >
+                  <Icon name="archive" />
+                  <span className="button-label">Weekly digest</span>
+                </button>
+              </>
+            )}
           </div>
         </header>
 
@@ -4513,9 +4522,6 @@ export default function App() {
                 sourceEvents={workSourceEvents}
               />
             )
-          )}
-          {activeView === "loops" && (
-            <LoopsView items={displayLoopItems} onLoopAction={handleLoopAction} />
           )}
           {activeView === "ai" && (
             isSimpleMode ? (
