@@ -16,6 +16,13 @@ type ContentTitleCache = HashMap<u32, (Option<String>, SystemTime)>;
 /// on every 2-second poll tick — result is reused for 10 seconds.
 static CONTENT_TITLE_CACHE: Mutex<Option<ContentTitleCache>> = Mutex::new(None);
 
+/// Cache: path → is_project_root result.
+/// `is_project_root` calls `.exists()` on up to 17 markers per directory, which
+/// triggers macOS TCC "Documents folder" permission prompts on every poll cycle.
+/// Caching means TCC fires at most once per unique path — after the user grants
+/// permission it never prompts again.
+static PROJECT_ROOT_CACHE: Mutex<Option<HashMap<PathBuf, bool>>> = Mutex::new(None);
+
 #[cfg(target_os = "macos")]
 use std::ffi::CStr;
 #[cfg(target_os = "windows")]
@@ -958,10 +965,9 @@ fn run_git(workspace_path: &str, args: &[&str]) -> Option<String> {
 /// branch name, repo root, remote origin, and any ticket ID in the branch.
 /// All calls use a 1-second timeout via the git config flag.
 pub fn detect_git_context(workspace_path: &str) -> Option<GitContext> {
-    // git is slow on cold start — skip if the dir isn't a git repo
-    if !Path::new(workspace_path).join(".git").exists()
-        && run_git(workspace_path, &["rev-parse", "--git-dir"]).is_none()
-    {
+    // Use git as a subprocess so macOS TCC attributes the Documents-folder
+    // access to git rather than DayTrail, preventing repeated permission popups.
+    if run_git(workspace_path, &["rev-parse", "--git-dir"]).is_none() {
         return None;
     }
     let branch = run_git(workspace_path, &["branch", "--show-current"]);
@@ -1445,7 +1451,9 @@ fn push_tool(tools: &mut Vec<String>, label: &str) {
 
 #[cfg(target_os = "macos")]
 fn workspace_candidate_from_path(path: &Path, home: Option<&Path>) -> Option<String> {
-    if !path.is_absolute() || !path.exists() || path.is_dir() && is_ignored_path(path) {
+    // Skip the path.exists() check — the path came from lsof so it already exists.
+    // A direct stat() on ~/Documents paths would trigger macOS TCC permission dialogs.
+    if !path.is_absolute() || path.is_dir() && is_ignored_path(path) {
         return None;
     }
     if let Some(home) = home {
@@ -1473,7 +1481,19 @@ fn workspace_candidate_from_path(path: &Path, home: Option<&Path>) -> Option<Str
 
 #[cfg(target_os = "macos")]
 fn is_project_root(path: &Path) -> bool {
-    [
+    // Check the cache first — avoids repeated stat() calls on the same path which
+    // would trigger macOS TCC "Documents folder" prompts on every poll cycle.
+    {
+        if let Ok(guard) = PROJECT_ROOT_CACHE.lock() {
+            if let Some(ref map) = *guard {
+                if let Some(&cached) = map.get(path) {
+                    return cached;
+                }
+            }
+        }
+    }
+
+    let result = [
         ".git",
         "package.json",
         "pnpm-workspace.yaml",
@@ -1492,7 +1512,14 @@ fn is_project_root(path: &Path) -> bool {
         "nbproject",
     ]
     .iter()
-    .any(|marker| path.join(marker).exists())
+    .any(|marker| path.join(marker).exists());
+
+    if let Ok(mut guard) = PROJECT_ROOT_CACHE.lock() {
+        let map = guard.get_or_insert_with(HashMap::new);
+        map.insert(path.to_path_buf(), result);
+    }
+
+    result
 }
 
 #[cfg(target_os = "macos")]
