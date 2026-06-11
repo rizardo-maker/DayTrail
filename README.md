@@ -89,17 +89,6 @@ High-priority insights fire an OS notification. All of them live in the Insights
 
 This is what makes DayTrail feel like an AI-native app rather than a tracker with a dashboard.
 
-### Ask AI — just ask, in plain language
-
-You don't have to navigate a dashboard to get an answer. Open the Ask AI chat and ask what you actually want to know:
-
-> *"How many hours was I in deep work today?"*  
-> *"Which tasks are overdue?"*  
-> *"What did I work on Tuesday afternoon?"*  
-> *"How much time am I spending on meetings vs. building?"*
-
-The AI has access to your captured data — today's sessions, this week's activity, open tasks, commitments, loop risks — and gives you answers grounded in what actually happened, not guesses. Works with Claude, GPT-4, Gemini, or a local Ollama model.
-
 ### Smart Breaks — sustainable work without another dashboard
 
 Enabled optionally in Settings. When turned on, DayTrail watches the same foreground-window signals it already uses and notices when you've been at it for a while. It sends blink reminders, posture resets, and short break prompts — at the interval you choose. It stays quiet during calls, presentation-like contexts, or when you step away. No extra card on your Today screen. No medical claims. Just the kind of nudge a good colleague might give you.
@@ -108,15 +97,37 @@ Enabled optionally in Settings. When turned on, DayTrail watches the same foregr
 
 After an interruption — a meeting, a lunch, an unexpected call — DayTrail shows you what you were in before you left. The app, the project, the file, the context. You don't have to rebuild the mental model from scratch. The trail is there.
 
-### Weekly digest — a report you're not embarrassed to share
+### Ask AI — just ask, in plain language
 
-At the end of the week, generate a source-backed digest: what you worked on, how focus held up, where AI tools contributed, what got done. With an AI provider connected, DayTrail turns seven days of local evidence into a first draft for your standup, client update, or OSS changelog. You edit; you don't invent.
+![Ask AI chat showing a real question about app usage and a detailed AI response with actual data](docs/screenshots/04-ask-ai.png)
+
+No dashboards to navigate. Just ask what you want to know — and get answers grounded in what actually happened, not guesses. DayTrail gives the AI direct access to your sessions, tasks, and activity so every answer is sourced from your real day.
+
+> *"How much time did I spend on each app today?"*  
+> *"What was my most fragmented day this week?"*  
+> *"Which projects have I been ignoring?"*
+
+Works with Claude, GPT-4, Gemini, or a local Ollama model.
+
+### AI Insights — patterns you wouldn't have noticed yourself
+
+![AI Insights showing proactive pattern cards: AI dominance, fragmented sessions, open loops](docs/screenshots/05-insights.png)
+
+Every few hours, DayTrail runs a quiet background analysis and surfaces what's worth knowing — things you wouldn't have thought to ask for. A "Needs Attention" card fires an OS notification. Every insight has a one-click "Explore in chat" button that takes you straight into a conversation about it.
+
+This is the difference between a tracker and an AI-native app.
 
 ### AI Impact — because AI work is real work
 
 ![AI Impact view showing per-tool usage: ChatGPT, Claude, and Claude Code with durations](docs/screenshots/02-ai-impact.png)
 
 DayTrail doesn't lump AI tools into "browsing" or ignore them. It tracks which tools (ChatGPT, Claude, Codex, Copilot, Cursor…), for how long, and on which projects — because that's increasingly where the real work happens.
+
+### Daily & Weekly Reports — a digest you're not embarrassed to share
+
+![Reports view showing a generated daily work report with session breakdown and AI tools detected](docs/screenshots/08-reports.png)
+
+One click generates a source-backed report of everything you worked on — sessions, apps, projects, AI tools used, and items to review. With an AI provider connected, it turns the raw log into a first draft for your standup, client update, or weekly retro. You edit; you don't invent.
 
 ### Activity — the story behind each session
 
