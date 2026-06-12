@@ -4382,7 +4382,7 @@ export default function App() {
           </button>
         </div>
 
-        <FocusMode />
+        <FocusMode tasks={effectiveSnapshot?.tasks ?? []} />
 
         <footer className="sidebar-footer">
           <button
@@ -11407,13 +11407,55 @@ function formatClock(totalSecs: number): string {
   return h > 0 ? `${h}:${pad(m)}:${pad(sec)}` : `${m}:${pad(sec)}`;
 }
 
-function FocusMode() {
+function FocusMode({ tasks = [] }: { tasks?: BackendTask[] }) {
   const [status, setStatus] = useState<FocusStatus | null>(null);
   const [summary, setSummary] = useState<FocusSummary | null>(null);
   const [composing, setComposing] = useState(false);
   const [label, setLabel] = useState("");
   const [durationMinutes, setDurationMinutes] = useState(0);
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [taskSuggestionsOpen, setTaskSuggestionsOpen] = useState(false);
+
+  const openTasks = useMemo(() => {
+    const seen = new Set<string>();
+    return tasks
+      .filter((task) => task.status !== "done" && task.title.trim())
+      .filter((task) => {
+        const key = task.title.trim().toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, 30);
+  }, [tasks]);
+
+  const matchingTasks = useMemo(() => {
+    const query = label.trim().toLowerCase();
+    const candidates = query
+      ? openTasks.filter((task) => {
+          const haystack = [
+            task.title,
+            task.projectLabel,
+            task.clientLabel,
+            task.notes,
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase();
+          return haystack.includes(query);
+        })
+      : openTasks;
+    return candidates.slice(0, 6);
+  }, [label, openTasks]);
+
+  const hasExactTaskMatch = openTasks.some(
+    (task) => task.title.trim().toLowerCase() === label.trim().toLowerCase(),
+  );
+
+  const chooseFocusLabel = (nextLabel: string) => {
+    setLabel(nextLabel);
+    setTaskSuggestionsOpen(false);
+  };
 
   const refresh = useCallback(async () => {
     try {
@@ -11445,6 +11487,7 @@ function FocusMode() {
       setSummary(null);
       setComposing(false);
       setLabel("");
+      setTaskSuggestionsOpen(false);
     } catch {
       /* ignore */
     }
@@ -11500,13 +11543,67 @@ function FocusMode() {
   if (composing) {
     return (
       <div className="focus-card">
-        <input
-          className="focus-input"
-          placeholder="What are you focusing on?"
-          value={label}
-          onChange={(e) => setLabel(e.target.value)}
-          autoFocus
-        />
+        <div className="focus-picker">
+          <input
+            aria-autocomplete="list"
+            aria-expanded={taskSuggestionsOpen && openTasks.length > 0}
+            aria-label="Focus task or custom focus"
+            className="focus-input"
+            placeholder={openTasks.length > 0 ? "Choose task or type focus..." : "What are you focusing on?"}
+            value={label}
+            onBlur={() => window.setTimeout(() => setTaskSuggestionsOpen(false), 120)}
+            onChange={(e) => {
+              setLabel(e.target.value);
+              setTaskSuggestionsOpen(true);
+            }}
+            onFocus={() => setTaskSuggestionsOpen(openTasks.length > 0)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setTaskSuggestionsOpen(false);
+            }}
+            autoFocus
+          />
+          {taskSuggestionsOpen && openTasks.length > 0 && (
+            <div className="focus-task-suggestions" role="listbox" aria-label="Open tasks">
+              <div className="focus-task-suggestions-head">
+                {label.trim() ? "Matching tasks" : "Open tasks"}
+              </div>
+              {matchingTasks.length > 0 ? (
+                matchingTasks.map((task) => (
+                  <button
+                    className="focus-task-suggestion"
+                    key={task.id}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      chooseFocusLabel(task.title);
+                    }}
+                    role="option"
+                    title={task.title}
+                    type="button"
+                  >
+                    <strong>{task.title}</strong>
+                    {(task.projectLabel || task.clientLabel) && (
+                      <span>{[task.clientLabel, task.projectLabel].filter(Boolean).join(" - ")}</span>
+                    )}
+                  </button>
+                ))
+              ) : (
+                <span className="focus-task-empty">No matching tasks</span>
+              )}
+              {label.trim() && !hasExactTaskMatch && (
+                <button
+                  className="focus-task-suggestion focus-task-suggestion-custom"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    chooseFocusLabel(label.trim());
+                  }}
+                  type="button"
+                >
+                  Use custom focus: "{label.trim()}"
+                </button>
+              )}
+            </div>
+          )}
+        </div>
         <select
           className="focus-input"
           value={durationMinutes}

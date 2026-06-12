@@ -7439,6 +7439,88 @@ textarea {
   font-size: 12px;
 }
 
+.focus-picker {
+  position: relative;
+}
+
+.focus-task-suggestions {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--border-strong, rgba(255, 255, 255, 0.18));
+  border-radius: 10px;
+  background: var(--surface, #0b1825);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.32);
+}
+
+.focus-task-suggestions-head {
+  padding: 4px 6px 6px;
+  color: var(--muted, rgba(255, 255, 255, 0.62));
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.focus-task-suggestion {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.focus-task-suggestion:hover,
+.focus-task-suggestion:focus-visible {
+  background: var(--surface-2, rgba(255, 255, 255, 0.06));
+  outline: none;
+}
+
+.focus-task-suggestion strong,
+.focus-task-suggestion span,
+.focus-task-empty {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.focus-task-suggestion strong {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.focus-task-suggestion span,
+.focus-task-empty {
+  color: var(--muted, rgba(255, 255, 255, 0.62));
+  font-size: 11px;
+}
+
+.focus-task-suggestion-custom {
+  margin-top: 4px;
+  border-top: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  border-radius: 0 0 8px 8px;
+  color: var(--accent, #4c8dff);
+}
+
+.focus-task-empty {
+  display: block;
+  padding: 8px;
+}
+
 .focus-summary {
   display: flex;
   flex-direction: column;
