@@ -138,6 +138,10 @@ Examples of insights DayTrail can surface:
 
 High-priority insights fire an OS notification. All of them live in the Insights view — dismissable, filterable, with a one-click "Explore in chat" button that takes you directly into a conversation about what was found.
 
+![Native macOS notification from DayTrail showing a proactive AI usage insight](docs/screenshots/09-proactive-notification.png)
+
+Native notifications mean the useful patterns come to you while the day is still happening — not only after you remember to open a dashboard.
+
 This is what makes DayTrail feel like an AI-native app rather than a tracker with a dashboard.
 
 ![AI Impact view showing per-tool usage: ChatGPT, Claude, and Claude Code with durations](docs/screenshots/02-ai-impact.png)
