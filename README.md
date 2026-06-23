@@ -191,6 +191,24 @@ See [PRIVACY.md](PRIVACY.md) for the complete model.
 
 ---
 
+## Codex plugin — ask your local DayTrail history
+
+DayTrail also ships with **DayTrail Helper**, a read-only Codex plugin for people who want to ask questions about their captured work from inside Codex.
+
+It connects to the local DayTrail SQLite database on your machine and can answer things like:
+
+- "Summarize my DayTrail activity today."
+- "Show my open DayTrail tasks."
+- "Search DayTrail for Slack yesterday."
+- "What AI tools did I use this week?"
+- "Show my recent DayTrail reports."
+
+The plugin does not upload, sync, or modify your data. It reads your local database in read-only mode through an MCP server.
+
+See [plugins/daytrail-helper](plugins/daytrail-helper) for install and usage details.
+
+---
+
 ## Tiny footprint. No Electron bloat.
 
 Built with Tauri + Rust — no bundled Chromium runtime. DayTrail ships as a small native desktop app instead of bundling a whole browser engine. Current release installers are roughly **10-12 MB on macOS** and **6-9 MB on Windows**, depending on installer format.
@@ -340,6 +358,8 @@ DayTrail needs **Accessibility** permission to read window titles. Open **Settin
 apps/desktop/              Tauri desktop app — Rust backend, React UI
 apps/browser-extension/    Browser extension for tab context
 apps/vscode-extension/     VS Code / editor bridge
+plugins/daytrail-helper/   Codex plugin for read-only local DayTrail queries
+.agents/plugins/           Repo-local Codex marketplace entry
 scripts/                   Build, release, bridge, and verification scripts
 docs/                      Supporting docs and screenshot assets
 ```
