@@ -68,6 +68,82 @@ pub struct WorktraceStore {
     auto_ingest_local_bridges: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ChatLookback {
+    Today,
+    Week,
+    LastWeek,
+    TwoWeeks,
+    Month,
+    Quarter,
+}
+
+fn chat_lookback_for_message(message: &str) -> ChatLookback {
+    let msg = message.to_lowercase();
+    let wants_history = msg.contains("all time")
+        || msg.contains("all data")
+        || msg.contains("history")
+        || msg.contains("since i started")
+        || msg.contains("ever ")
+        || msg.contains("from when")
+        || msg.contains("since when")
+        || msg.contains("how far back")
+        || msg.contains("available data")
+        || msg.contains("data coverage")
+        || msg.contains("earliest data")
+        || msg.contains("oldest data");
+    if wants_history
+        || msg.contains("quarter")
+        || msg.contains("90 day")
+        || msg.contains("3 month")
+    {
+        return ChatLookback::Quarter;
+    }
+
+    if msg.contains("month")
+        || msg.contains("30 day")
+        || msg.contains("4 week")
+        || msg.contains("this month")
+        || msg.contains("last month")
+    {
+        return ChatLookback::Month;
+    }
+
+    if msg.contains("two week")
+        || msg.contains("2 week")
+        || msg.contains("14 day")
+        || msg.contains("fortnight")
+    {
+        return ChatLookback::TwoWeeks;
+    }
+
+    if msg.contains("last week") || msg.contains("previous week") || msg.contains("prior week") {
+        return ChatLookback::LastWeek;
+    }
+
+    if msg.contains("week")
+        || msg.contains("7 day")
+        || msg.contains("pattern")
+        || msg.contains("trend")
+        || msg.contains("average")
+        || [
+            "monday",
+            "tuesday",
+            "wednesday",
+            "thursday",
+            "friday",
+            "saturday",
+            "sunday",
+        ]
+        .iter()
+        .any(|d| msg.contains(d))
+    {
+        return ChatLookback::Week;
+    }
+
+    ChatLookback::Today
+}
+
 impl WorktraceStore {
     pub fn default_database_path() -> Result<PathBuf> {
         let data_dir = dirs::data_local_dir().context("failed to resolve user data directory")?;
@@ -3982,33 +4058,72 @@ Today is {now_str}."
         })
     }
 
+    fn build_chat_data_coverage(&self) -> Result<Option<String>> {
+        let conn = self.lock()?;
+        let mut ranges: Vec<(&str, i64, i64, i64)> = Vec::new();
+
+        let source_events: (Option<i64>, Option<i64>, i64) = conn.query_row(
+            "SELECT MIN(started_at), MAX(ended_at), COUNT(*) FROM source_events",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )?;
+        if let (Some(start), Some(end), count) = source_events {
+            if count > 0 {
+                ranges.push(("app/window/browser events", start, end, count));
+            }
+        }
+
+        let work_sessions: (Option<i64>, Option<i64>, i64) = conn.query_row(
+            "SELECT MIN(started_at), MAX(ended_at), COUNT(*) FROM work_sessions",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )?;
+        if let (Some(start), Some(end), count) = work_sessions {
+            if count > 0 {
+                ranges.push(("work sessions", start, end, count));
+            }
+        }
+
+        let ai_usage: (Option<i64>, Option<i64>, i64) = conn.query_row(
+            "SELECT MIN(COALESCE(started_at, created_at)), MAX(COALESCE(ended_at, started_at, created_at)), COUNT(*) FROM ai_usage",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )?;
+        if let (Some(start), Some(end), count) = ai_usage {
+            if count > 0 {
+                ranges.push(("AI usage records", start, end, count));
+            }
+        }
+
+        if ranges.is_empty() {
+            return Ok(None);
+        }
+
+        let first = ranges.iter().map(|(_, start, _, _)| *start).min().unwrap_or(0);
+        let last = ranges.iter().map(|(_, _, end, _)| *end).max().unwrap_or(0);
+        let mut out = format!(
+            "## Available data coverage\n\nDayTrail's local database currently has tracked data from {} to {}.\n",
+            format_local_date_from_ms(first),
+            format_local_date_from_ms(last)
+        );
+        for (label, start, end, count) in ranges {
+            out.push_str(&format!(
+                "- {}: {} records ({} to {})\n",
+                label,
+                count,
+                format_local_date_from_ms(start),
+                format_local_date_from_ms(end)
+            ));
+        }
+
+        Ok(Some(out))
+    }
+
     fn build_chat_context(&self, message: &str) -> Result<(String, Vec<String>)> {
         let msg = message.to_lowercase();
         let mut sections: Vec<String> = Vec::new();
         let mut sources: Vec<String> = Vec::new();
-
-        // Determine the historical look-back range from message intent.
-        // Priority: quarter > month > last-week > this-week > none (today only).
-        let wants_quarter = msg.contains("quarter") || msg.contains("90 day")
-            || msg.contains("3 month") || msg.contains("all time")
-            || msg.contains("all data") || msg.contains("history")
-            || msg.contains("since i started") || msg.contains("ever ");
-
-        let wants_month = !wants_quarter
-            && (msg.contains("month") || msg.contains("30 day") || msg.contains("4 week")
-                || msg.contains("this month") || msg.contains("last month"));
-
-        // "last week" = Mon–Sun of the calendar week before this one.
-        let wants_last_week = !wants_month && !wants_quarter
-            && (msg.contains("last week") || msg.contains("previous week")
-                || msg.contains("prior week"));
-
-        let wants_week = !wants_month && !wants_quarter && !wants_last_week
-            && (msg.contains("week") || msg.contains("7 day") || msg.contains("pattern")
-                || msg.contains("trend") || msg.contains("average")
-                || ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
-                    .iter()
-                    .any(|d| msg.contains(d)));
+        let lookback = chat_lookback_for_message(message);
 
         let wants_tasks = msg.contains("task") || msg.contains("todo") || msg.contains(" due")
             || msg.contains("overdue") || msg.contains("priority") || msg.contains("backlog")
@@ -4023,14 +4138,19 @@ Today is {now_str}."
         let wants_billing = msg.contains("bill") || msg.contains("invoice")
             || msg.contains("charge") || msg.contains("client");
 
-        // Always include today — it's compact and answers most questions
+        if let Some(coverage) = self.build_chat_data_coverage()? {
+            sections.push(coverage);
+            sources.push("available data coverage".to_string());
+        }
+
+        // Always include today — it's compact and answers most questions.
         let snapshot = self.today_snapshot()?;
         sections.push(build_compact_chat_snapshot(&snapshot));
         sources.push("today's activity".to_string());
 
         let today = Local::now().date_naive();
 
-        if wants_quarter {
+        if lookback == ChatLookback::Quarter {
             let from_date = (today - ChronoDuration::days(89)).format("%Y-%m-%d").to_string();
             let to_date = today.format("%Y-%m-%d").to_string();
             if let Ok(export) = self.export_data_range(ExportRangeInput {
@@ -4040,7 +4160,7 @@ Today is {now_str}."
                 sections.push(build_compact_weekly_context(&export));
                 sources.push(format!("last 90 days ({from_date} → {to_date})"));
             }
-        } else if wants_month {
+        } else if lookback == ChatLookback::Month {
             let from_date = (today - ChronoDuration::days(29)).format("%Y-%m-%d").to_string();
             let to_date = today.format("%Y-%m-%d").to_string();
             if let Ok(export) = self.export_data_range(ExportRangeInput {
@@ -4050,7 +4170,17 @@ Today is {now_str}."
                 sections.push(build_compact_weekly_context(&export));
                 sources.push(format!("last 30 days ({from_date} → {to_date})"));
             }
-        } else if wants_last_week {
+        } else if lookback == ChatLookback::TwoWeeks {
+            let from_date = (today - ChronoDuration::days(13)).format("%Y-%m-%d").to_string();
+            let to_date = today.format("%Y-%m-%d").to_string();
+            if let Ok(export) = self.export_data_range(ExportRangeInput {
+                from_date: Some(from_date.clone()),
+                to_date: Some(to_date.clone()),
+            }) {
+                sections.push(build_compact_weekly_context(&export));
+                sources.push(format!("last 14 days ({from_date} → {to_date})"));
+            }
+        } else if lookback == ChatLookback::LastWeek {
             // Calendar week Mon–Sun that ended before this week.
             let days_since_monday = today.weekday().num_days_from_monday() as i64;
             let this_monday = today - ChronoDuration::days(days_since_monday);
@@ -4065,7 +4195,7 @@ Today is {now_str}."
                 sections.push(build_compact_weekly_context(&export));
                 sources.push(format!("last week ({from_date} → {to_date})"));
             }
-        } else if wants_week {
+        } else if lookback == ChatLookback::Week {
             let from_date = (today - ChronoDuration::days(6)).format("%Y-%m-%d").to_string();
             let to_date = today.format("%Y-%m-%d").to_string();
             if let Ok(export) = self.export_data_range(ExportRangeInput {
@@ -10493,11 +10623,19 @@ fn build_compact_chat_snapshot(snapshot: &TodaySnapshot) -> String {
     out
 }
 
-/// Compact weekly summary for chat context. Much shorter than the full weekly markdown.
+fn format_local_date_from_ms(ms: i64) -> String {
+    Local
+        .timestamp_millis_opt(ms)
+        .single()
+        .map(|dt| dt.format("%Y-%m-%d").to_string())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+/// Compact date-range summary for chat context. Much shorter than the full export markdown.
 fn build_compact_weekly_context(export: &ExportPayload) -> String {
     let from = export.from_date.as_deref().unwrap_or("?");
     let to = export.to_date.as_deref().unwrap_or("?");
-    let mut out = format!("## Week ({} to {})\n\n", from, to);
+    let mut out = format!("## Activity range ({} to {})\n\n", from, to);
 
     let total_ms: i64 = export
         .work_sessions
@@ -10511,7 +10649,7 @@ fn build_compact_weekly_context(export: &ExportPayload) -> String {
     ));
 
     if !export.app_usage_summary.apps.is_empty() {
-        out.push_str("\n**Top apps this week:**\n");
+        out.push_str("\n**Top apps in this range:**\n");
         for app in export.app_usage_summary.apps.iter().take(6) {
             let pct = if total_ms > 0 {
                 app.duration_ms * 100 / total_ms
@@ -10546,7 +10684,7 @@ fn build_compact_weekly_context(export: &ExportPayload) -> String {
 
     if !export.commitments.is_empty() {
         out.push_str(&format!(
-            "\n**Commitments tracked this week:** {}\n",
+            "\n**Commitments tracked in this range:** {}\n",
             export.commitments.len()
         ));
     }
@@ -10559,7 +10697,7 @@ fn build_compact_weekly_context(export: &ExportPayload) -> String {
             .take(4)
             .map(|t| format!("{} ({})", t.tool, format_duration_words(t.duration_ms)))
             .collect();
-        out.push_str(&format!("\n**AI tools used this week:** {}\n", tools.join(", ")));
+        out.push_str(&format!("\n**AI tools used in this range:** {}\n", tools.join(", ")));
     }
 
     out
@@ -13280,6 +13418,30 @@ mod tests {
     }
 
     #[test]
+    fn chat_lookback_detects_two_week_requests() {
+        assert_eq!(
+            chat_lookback_for_message("From last two weeks what are my routine tasks?"),
+            ChatLookback::TwoWeeks
+        );
+        assert_eq!(
+            chat_lookback_for_message("show me patterns from the past 14 days"),
+            ChatLookback::TwoWeeks
+        );
+    }
+
+    #[test]
+    fn chat_lookback_detects_data_coverage_questions() {
+        assert_eq!(
+            chat_lookback_for_message("from when you have the data?"),
+            ChatLookback::Quarter
+        );
+        assert_eq!(
+            chat_lookback_for_message("how far back does DayTrail have available data"),
+            ChatLookback::Quarter
+        );
+    }
+
+    #[test]
     fn capture_health_degrades_when_required_os_permissions_are_missing() {
         let summary = build_capture_health_with_permission_state(
             &[],
@@ -13389,6 +13551,39 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let store = WorktraceStore::open(dir.path().join("test.sqlite3")).expect("open store");
         (dir, store)
+    }
+
+    #[test]
+    fn chat_context_includes_database_coverage() {
+        let (_dir, store) = temp_store();
+        let started_at = Local
+            .with_ymd_and_hms(2026, 5, 25, 10, 0, 0)
+            .single()
+            .expect("valid local date")
+            .timestamp_millis();
+        store
+            .record_source_event(SourceEventInput {
+                id: Some("coverage-event".to_string()),
+                source: "window".into(),
+                event_type: "window".into(),
+                app: Some("Editor".into()),
+                title: Some("First useful record".into()),
+                url: None,
+                workspace_key: None,
+                started_at: Some(started_at),
+                ended_at: Some(started_at + 60_000),
+                sensitivity: None,
+                metadata_json: None,
+            })
+            .expect("record event");
+
+        let (context, sources) = store
+            .build_chat_context("from when you have the data?")
+            .expect("build chat context");
+
+        assert!(sources.contains(&"available data coverage".to_string()));
+        assert!(context.contains("Available data coverage"));
+        assert!(context.contains("2026-05-25"));
     }
 
     fn seed_event(store: &WorktraceStore, id: &str, title: &str) -> SourceEvent {
