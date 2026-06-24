@@ -650,6 +650,16 @@ impl WorktraceStore {
                 seen_at INTEGER,
                 dismissed_at INTEGER
             );
+
+            CREATE TABLE IF NOT EXISTS daily_goals (
+                id TEXT PRIMARY KEY,
+                label TEXT NOT NULL,
+                target_type TEXT NOT NULL,
+                match_value TEXT NOT NULL,
+                daily_target_ms INTEGER NOT NULL,
+                active INTEGER NOT NULL DEFAULT 1,
+                created_at INTEGER NOT NULL
+            );
             "#,
         )?;
 
@@ -2789,6 +2799,42 @@ impl WorktraceStore {
         let ai_usage = self.list_ai_usage_between(Some(day_start), Some(day_end), 1_000)?;
         let ai_usage_summary = build_ai_usage_summary(&source_events, &ai_usage, ai_outputs.len());
         let app_usage_summary = build_app_usage_summary(&source_events);
+        let daily_goals = self.list_daily_goals().unwrap_or_default();
+        let goal_progress = self.build_goal_progress(&daily_goals, &source_events);
+        let git_commits: Vec<crate::models::GitCommit> = source_events
+            .iter()
+            .filter(|e| e.event_type == "git_commit")
+            .map(|e| {
+                let meta: serde_json::Value = e
+                    .metadata_json
+                    .as_deref()
+                    .and_then(|s| serde_json::from_str(s).ok())
+                    .unwrap_or(serde_json::Value::Null);
+                crate::models::GitCommit {
+                    id: e.id.clone(),
+                    message: e.title.clone().unwrap_or_default(),
+                    repo: meta
+                        .get("git_repo")
+                        .and_then(|v| v.as_str())
+                        .or_else(|| e.workspace_key.as_deref())
+                        .unwrap_or_default()
+                        .to_string(),
+                    branch: meta.get("git_branch").and_then(|v| v.as_str()).map(str::to_string),
+                    captured_at: e.started_at,
+                }
+            })
+            .collect();
+        let thirty_days_ms = 30_i64 * 24 * 60 * 60 * 1_000;
+        let streak_threshold_ms = 30_i64 * 60 * 1_000; // 30 min
+        let streak_summary = self
+            .build_streak_summary(day_end - thirty_days_ms, day_end, streak_threshold_ms)
+            .unwrap_or(crate::models::StreakSummary {
+                current_streak_days: 0,
+                longest_streak_days: 0,
+                avg_daily_ms: 0,
+                active_days_30: 0,
+                threshold_ms: streak_threshold_ms,
+            });
         let automation_candidates = build_automation_candidates(&source_events);
         let inferred_work_blocks = build_inferred_work_blocks(
             &source_events,
@@ -2868,6 +2914,9 @@ impl WorktraceStore {
             settings,
             project_context: detect_project_from_sources(default_project_sources()).ok(),
             active_work_context: self.get_active_work_context().ok().flatten(),
+            goal_progress,
+            git_commits,
+            streak_summary,
         })
     }
 
@@ -3163,6 +3212,29 @@ impl WorktraceStore {
             sensitivity: Some("normal".into()),
             metadata_json: Some(metadata_json.clone()),
         })?;
+        // Extra event for git commits so they can be surfaced in the timeline
+        if let Some(commit_msg) = extract_git_commit_message(metadata.last_command.as_deref()) {
+            let git_commit_json = serde_json::json!({
+                "commit_message": commit_msg,
+                "cwd": cwd,
+                "git_branch": metadata.git_branch,
+                "git_repo": metadata.git_repo,
+            })
+            .to_string();
+            self.record_source_event(SourceEventInput {
+                id: None,
+                source: "terminal-bridge".into(),
+                event_type: "git_commit".to_string(),
+                app: Some(app.clone()),
+                title: Some(commit_msg),
+                url: None,
+                workspace_key: Some(cwd.to_string()),
+                started_at: Some(captured_at),
+                ended_at: Some(captured_at),
+                sensitivity: Some("normal".into()),
+                metadata_json: Some(git_commit_json),
+            })?;
+        }
         self.record_activity(
             event_type,
             Some(&app),
@@ -5537,6 +5609,195 @@ Today is {now_str}."
         let conn = self.lock()?;
         let changed = conn.execute("DELETE FROM idle_blocks WHERE id = ?1", params![id])?;
         Ok(changed > 0)
+    }
+
+    // ── Daily goals ───────────────────────────────────────────────────────────
+
+    pub fn list_daily_goals(&self) -> Result<Vec<crate::models::DailyGoal>> {
+        use crate::models::DailyGoal;
+        let conn = self.lock()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, label, target_type, match_value, daily_target_ms, active, created_at
+             FROM daily_goals ORDER BY created_at ASC",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(DailyGoal {
+                id: row.get(0)?,
+                label: row.get(1)?,
+                target_type: row.get(2)?,
+                match_value: row.get(3)?,
+                daily_target_ms: row.get(4)?,
+                active: row.get::<_, i64>(5)? != 0,
+                created_at: row.get(6)?,
+            })
+        })?;
+        rows.map(|r| r.map_err(Into::into)).collect()
+    }
+
+    pub fn upsert_daily_goal(&self, input: crate::models::DailyGoalInput) -> Result<crate::models::DailyGoal> {
+        use crate::models::DailyGoal;
+        let id = format!("goal-{}", Utc::now().timestamp_micros());
+        let now = now_ms();
+        let conn = self.lock()?;
+        conn.execute(
+            "INSERT INTO daily_goals (id, label, target_type, match_value, daily_target_ms, active, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6)",
+            params![id, input.label, input.target_type, input.match_value, input.daily_target_ms, now],
+        )?;
+        Ok(DailyGoal {
+            id,
+            label: input.label,
+            target_type: input.target_type,
+            match_value: input.match_value,
+            daily_target_ms: input.daily_target_ms,
+            active: true,
+            created_at: now,
+        })
+    }
+
+    pub fn delete_daily_goal(&self, id: &str) -> Result<()> {
+        let conn = self.lock()?;
+        conn.execute("DELETE FROM daily_goals WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    pub fn build_goal_progress(
+        &self,
+        goals: &[crate::models::DailyGoal],
+        source_events: &[SourceEvent],
+    ) -> Vec<crate::models::GoalProgress> {
+        use crate::models::GoalProgress;
+        goals
+            .iter()
+            .filter(|g| g.active)
+            .map(|goal| {
+                let matching: Vec<&SourceEvent> = source_events
+                    .iter()
+                    .filter(|e| goal_event_matches(goal, e))
+                    .collect();
+                let achieved_ms = merge_event_intervals(&matching);
+                let progress_ratio = if goal.daily_target_ms > 0 {
+                    achieved_ms as f64 / goal.daily_target_ms as f64
+                } else {
+                    0.0
+                };
+                GoalProgress {
+                    goal_id: goal.id.clone(),
+                    label: goal.label.clone(),
+                    target_type: goal.target_type.clone(),
+                    match_value: goal.match_value.clone(),
+                    daily_target_ms: goal.daily_target_ms,
+                    achieved_ms,
+                    progress_ratio,
+                    met: achieved_ms >= goal.daily_target_ms,
+                }
+            })
+            .collect()
+    }
+
+    pub fn build_streak_summary(
+        &self,
+        from_ms: i64,
+        to_ms: i64,
+        threshold_ms: i64,
+    ) -> Result<crate::models::StreakSummary> {
+        use crate::models::StreakSummary;
+        // One query: sum duration_ms grouped by calendar day (UTC seconds)
+        let conn = self.lock()?;
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT date(started_at / 1000, 'unixepoch', 'localtime') AS day,
+                   SUM(duration_ms) AS total_ms
+            FROM source_events
+            WHERE started_at >= ?1 AND started_at < ?2
+              AND event_type != 'git_commit'
+            GROUP BY day
+            ORDER BY day ASC
+            "#,
+        )?;
+        let rows = stmt.query_map(params![from_ms, to_ms], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })?;
+        let mut day_totals: Vec<(String, i64)> = Vec::new();
+        for row in rows {
+            day_totals.push(row?);
+        }
+
+        let today_str = {
+            let now = chrono::Local::now();
+            now.format("%Y-%m-%d").to_string()
+        };
+
+        let active_days_30 = day_totals.iter().filter(|(_, ms)| *ms >= threshold_ms).count() as i64;
+        let avg_daily_ms = if active_days_30 > 0 {
+            day_totals
+                .iter()
+                .filter(|(_, ms)| *ms >= threshold_ms)
+                .map(|(_, ms)| ms)
+                .sum::<i64>()
+                / active_days_30
+        } else {
+            0
+        };
+
+        // Current streak: walk backwards from today
+        let mut current_streak_days = 0_i64;
+        let day_set: std::collections::HashMap<&str, i64> =
+            day_totals.iter().map(|(d, ms)| (d.as_str(), *ms)).collect();
+        let mut check_date = chrono::Local::now().date_naive();
+        loop {
+            let ds = check_date.format("%Y-%m-%d").to_string();
+            if let Some(&ms) = day_set.get(ds.as_str()) {
+                if ms >= threshold_ms {
+                    current_streak_days += 1;
+                    check_date = check_date
+                        .checked_sub_days(chrono::Days::new(1))
+                        .unwrap_or(check_date);
+                    continue;
+                }
+            }
+            break;
+        }
+
+        // Longest ever streak in the window
+        let mut longest_streak_days = 0_i64;
+        let mut run = 0_i64;
+        let mut prev_date: Option<chrono::NaiveDate> = None;
+        for (day_str, ms) in &day_totals {
+            if *ms < threshold_ms {
+                if run > longest_streak_days {
+                    longest_streak_days = run;
+                }
+                run = 0;
+                prev_date = None;
+                continue;
+            }
+            if let Ok(d) = chrono::NaiveDate::parse_from_str(day_str, "%Y-%m-%d") {
+                let consecutive = prev_date
+                    .map(|p| p.checked_add_days(chrono::Days::new(1)) == Some(d))
+                    .unwrap_or(true);
+                if consecutive {
+                    run += 1;
+                } else {
+                    if run > longest_streak_days {
+                        longest_streak_days = run;
+                    }
+                    run = 1;
+                }
+                prev_date = Some(d);
+            }
+        }
+        if run > longest_streak_days {
+            longest_streak_days = run;
+        }
+        let _ = today_str;
+        Ok(StreakSummary {
+            current_streak_days,
+            longest_streak_days,
+            avg_daily_ms,
+            active_days_30,
+            threshold_ms,
+        })
     }
 
     // ── Active work context ───────────────────────────────────────────────────
@@ -13403,6 +13664,107 @@ pub fn default_database_path() -> Result<PathBuf> {
         .or_else(dirs::home_dir)
         .context("failed to resolve data directory")?;
     Ok(base.join(DATA_DIR_NAME).join(DB_FILE_NAME))
+}
+
+fn goal_event_matches(goal: &crate::models::DailyGoal, event: &SourceEvent) -> bool {
+    let mv = goal.match_value.to_ascii_lowercase();
+    match goal.target_type.as_str() {
+        "app" => event
+            .app
+            .as_deref()
+            .map(|a| a.to_ascii_lowercase() == mv)
+            .unwrap_or(false),
+        "project" => event
+            .workspace_key
+            .as_deref()
+            .map(|k| {
+                let kl = k.to_ascii_lowercase();
+                kl == mv || kl.starts_with(&format!("{mv}/")) || kl.starts_with(&format!("{mv}\\"))
+            })
+            .unwrap_or(false),
+        "category" => {
+            let app_lower = event.app.as_deref().unwrap_or("").to_ascii_lowercase();
+            categorize_app(&app_lower) == mv
+        }
+        _ => false,
+    }
+}
+
+/// Rough app categorization matching frontend categories.
+fn categorize_app(app_lower: &str) -> &'static str {
+    if matches!(
+        app_lower,
+        "code" | "cursor" | "zed" | "xcode" | "vim" | "nvim" | "neovim"
+            | "intellij idea" | "pycharm" | "webstorm" | "rider" | "clion"
+    ) || app_lower.starts_with("visual studio")
+    {
+        "development"
+    } else if matches!(app_lower, "terminal" | "iterm2" | "alacritty" | "warp" | "hyper" | "kitty" | "ghostty") {
+        "terminal"
+    } else if matches!(
+        app_lower,
+        "google chrome" | "safari" | "firefox" | "arc" | "edge" | "brave browser"
+    ) {
+        "browser"
+    } else if matches!(
+        app_lower,
+        "slack" | "discord" | "teams" | "zoom" | "webex" | "telegram" | "whatsapp"
+    ) {
+        "communication"
+    } else if matches!(app_lower, "notion" | "obsidian" | "bear" | "notes" | "roam research") {
+        "notes"
+    } else {
+        "other"
+    }
+}
+
+/// Parse `git commit -m "message"` / `git commit --message="msg"` etc.
+fn extract_git_commit_message(last_command: Option<&str>) -> Option<String> {
+    let cmd = last_command?.trim();
+    // Must start with `git commit`
+    let rest = cmd.strip_prefix("git commit")?.trim_start();
+    // Walk args looking for -m / --message
+    let args: Vec<String> = parse_shell_args(rest);
+    let mut i = 0;
+    while i < args.len() {
+        let arg = &args[i];
+        if arg == "-m" || arg == "--message" {
+            if let Some(msg) = args.get(i + 1) {
+                return Some(msg.trim_matches(|c| c == '\'' || c == '"').to_string());
+            }
+        } else if let Some(msg) = arg.strip_prefix("--message=") {
+            return Some(msg.trim_matches(|c| c == '\'' || c == '"').to_string());
+        } else if let Some(msg) = arg.strip_prefix("-m=") {
+            return Some(msg.trim_matches(|c| c == '\'' || c == '"').to_string());
+        }
+        i += 1;
+    }
+    None
+}
+
+fn parse_shell_args(input: &str) -> Vec<String> {
+    let mut args = Vec::new();
+    let mut current = String::new();
+    let mut in_single = false;
+    let mut in_double = false;
+    let mut chars = input.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\'' if !in_double => in_single = !in_single,
+            '"' if !in_single => in_double = !in_double,
+            ' ' | '\t' if !in_single && !in_double => {
+                if !current.is_empty() {
+                    args.push(current.clone());
+                    current.clear();
+                }
+            }
+            _ => current.push(c),
+        }
+    }
+    if !current.is_empty() {
+        args.push(current);
+    }
+    args
 }
 
 #[cfg(test)]

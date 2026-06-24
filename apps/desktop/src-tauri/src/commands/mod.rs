@@ -1,5 +1,6 @@
 pub mod agents;
 pub mod bridge;
+pub mod goals;
 pub mod insights;
 pub mod chat;
 pub mod calendar;
@@ -133,6 +134,9 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Syn
         insights::list_proactive_insights,
         insights::dismiss_insight,
         insights::mark_insights_seen,
-        insights::count_unseen_insights
+        insights::count_unseen_insights,
+        goals::list_daily_goals,
+        goals::create_daily_goal,
+        goals::delete_daily_goal,
     ]
 }

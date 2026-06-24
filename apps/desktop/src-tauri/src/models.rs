@@ -345,6 +345,9 @@ pub struct TodaySnapshot {
     pub settings: Settings,
     pub project_context: Option<ProjectContext>,
     pub active_work_context: Option<ActiveWorkContext>,
+    pub goal_progress: Vec<GoalProgress>,
+    pub git_commits: Vec<GitCommit>,
+    pub streak_summary: StreakSummary,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1221,6 +1224,10 @@ pub struct TerminalBridgeMetadata {
     pub updated_at: Option<String>,
     pub event_type: Option<String>,
     pub last_command: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub git_branch: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub git_repo: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1407,4 +1414,72 @@ pub struct ActiveWorkContextInput {
     pub task: Option<String>,
     pub ticket_id: Option<String>,
     pub billable: Option<bool>,
+}
+
+// ── Daily Goals ───────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DailyGoal {
+    pub id: String,
+    pub label: String,
+    /// "app" | "project" | "category"
+    pub target_type: String,
+    /// Value to match against (app name, workspace_key prefix, or category)
+    pub match_value: String,
+    pub daily_target_ms: i64,
+    pub active: bool,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DailyGoalInput {
+    pub label: String,
+    pub target_type: String,
+    pub match_value: String,
+    pub daily_target_ms: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GoalProgress {
+    pub goal_id: String,
+    pub label: String,
+    pub target_type: String,
+    pub match_value: String,
+    pub daily_target_ms: i64,
+    pub achieved_ms: i64,
+    /// 0.0 – 1.0+
+    pub progress_ratio: f64,
+    pub met: bool,
+}
+
+// ── Git Commits ───────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitCommit {
+    pub id: String,
+    pub message: String,
+    pub repo: String,
+    pub branch: Option<String>,
+    pub captured_at: i64,
+}
+
+// ── Streak / Momentum ─────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StreakSummary {
+    /// Consecutive calendar days (ending today) with >= threshold tracked time
+    pub current_streak_days: i64,
+    /// Longest ever consecutive streak
+    pub longest_streak_days: i64,
+    /// Average tracked ms per active day over the past 30 days
+    pub avg_daily_ms: i64,
+    /// Number of active days in the past 30 days
+    pub active_days_30: i64,
+    /// Minimum ms required per day to count as "active" (configurable, default 30 min)
+    pub threshold_ms: i64,
 }

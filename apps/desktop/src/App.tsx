@@ -274,6 +274,46 @@ type BackendTodaySnapshot = {
   settings: BackendSettings;
   projectContext?: { path: string; source: string } | null;
   activeWorkContext?: BackendActiveWorkContext | null;
+  goalProgress?: BackendGoalProgress[];
+  gitCommits?: BackendGitCommit[];
+  streakSummary?: BackendStreakSummary;
+};
+
+type BackendGoalProgress = {
+  goalId: string;
+  label: string;
+  targetType: string;
+  matchValue: string;
+  dailyTargetMs: number;
+  achievedMs: number;
+  progressRatio: number;
+  met: boolean;
+};
+
+type BackendGitCommit = {
+  id: string;
+  message: string;
+  repo: string;
+  branch?: string | null;
+  capturedAt: number;
+};
+
+type BackendStreakSummary = {
+  currentStreakDays: number;
+  longestStreakDays: number;
+  avgDailyMs: number;
+  activeDays30: number;
+  thresholdMs: number;
+};
+
+type BackendDailyGoal = {
+  id: string;
+  label: string;
+  targetType: string;
+  matchValue: string;
+  dailyTargetMs: number;
+  active: boolean;
+  createdAt: number;
 };
 
 type BackendTask = {
@@ -5909,8 +5949,134 @@ function TodayView({
           }}
         />
       )}
+
+      {/* ── Streak & Momentum ── */}
+      {snapshot?.streakSummary && (
+        <StreakMomentumPanel streak={snapshot.streakSummary} />
+      )}
+
+      {/* ── Goal Progress ── */}
+      {(snapshot?.goalProgress?.length ?? 0) > 0 && (
+        <GoalProgressPanel goals={snapshot!.goalProgress!} />
+      )}
+
+      {/* ── Git Commits ── */}
+      {(snapshot?.gitCommits?.length ?? 0) > 0 && (
+        <GitCommitsPanel commits={snapshot!.gitCommits!} />
+      )}
     </div>
   );
+}
+
+function StreakMomentumPanel({ streak }: { streak: BackendStreakSummary }) {
+  const thresholdMin = Math.round(streak.thresholdMs / 60_000);
+  return (
+    <section className="today-zone" aria-label="Streak and momentum">
+      <div className="zone-heading">
+        <div>
+          <span>Momentum</span>
+          <h2>
+            {streak.currentStreakDays > 0
+              ? `${streak.currentStreakDays}-day streak`
+              : "No active streak"}
+          </h2>
+        </div>
+        <span className="zone-status">{streak.activeDays30} active days this month</span>
+      </div>
+      <section className="streak-stats-grid today-stat-strip">
+        <div className="stat-card">
+          <span>Current streak</span>
+          <strong>{streak.currentStreakDays}d</strong>
+          <em>consecutive days</em>
+        </div>
+        <div className="stat-card">
+          <span>Best streak</span>
+          <strong>{streak.longestStreakDays}d</strong>
+          <em>in last 30 days</em>
+        </div>
+        <div className="stat-card">
+          <span>Daily average</span>
+          <strong>{formatDuration(streak.avgDailyMs)}</strong>
+          <em>on active days</em>
+        </div>
+        <div className="stat-card">
+          <span>Active days</span>
+          <strong>{streak.activeDays30}</strong>
+          <em>of last 30 ({thresholdMin}m+ threshold)</em>
+        </div>
+      </section>
+    </section>
+  );
+}
+
+function GoalProgressPanel({ goals }: { goals: BackendGoalProgress[] }) {
+  return (
+    <section className="today-zone" aria-label="Daily goals">
+      <div className="zone-heading">
+        <div>
+          <span>Goals</span>
+          <h2>
+            {goals.filter((g) => g.met).length}/{goals.length} met today
+          </h2>
+        </div>
+      </div>
+      <div className="goal-list">
+        {goals.map((goal) => (
+          <div className="goal-row" key={goal.goalId}>
+            <div className="goal-row-header">
+              <span className="goal-label">{goal.label}</span>
+              <span className={`goal-badge${goal.met ? " goal-badge--met" : ""}`}>
+                {goal.met ? "Done" : `${Math.round(goal.progressRatio * 100)}%`}
+              </span>
+            </div>
+            <div className="goal-bar-track">
+              <div
+                className="goal-bar-fill"
+                style={{ width: `${Math.min(100, Math.round(goal.progressRatio * 100))}%` }}
+              />
+            </div>
+            <span className="goal-time-label">
+              {formatDuration(goal.achievedMs)} / {formatDuration(goal.dailyTargetMs)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function GitCommitsPanel({ commits }: { commits: BackendGitCommit[] }) {
+  return (
+    <section className="today-zone" aria-label="Git commits">
+      <div className="zone-heading">
+        <div>
+          <span>Code shipped</span>
+          <h2>{commits.length} commit{commits.length === 1 ? "" : "s"} today</h2>
+        </div>
+      </div>
+      <div className="git-commit-list">
+        {commits.map((commit) => (
+          <div className="git-commit-row" key={commit.id}>
+            <span className="git-commit-dot" aria-hidden="true" />
+            <div className="git-commit-body">
+              <span className="git-commit-msg">{commit.message}</span>
+              <span className="git-commit-meta">
+                {repoLabel(commit.repo)}
+                {commit.branch ? ` · ${commit.branch}` : ""}
+                {" · "}
+                {formatTime(commit.capturedAt)}
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function repoLabel(repo: string): string {
+  const parts = repo.replace(/\\/g, "/").split("/");
+  return parts[parts.length - 1] || repo;
 }
 
 function HourlyTimelinePanel({
@@ -10145,7 +10311,7 @@ function SettingsView({
   toggleFolder: (folderId: string) => void;
 }) {
   const [activeSettings, setActiveSettings] = useState<
-    "mode" | "capture" | "ai" | "privacy" | "integrations" | "storage" | "shortcuts" | "advanced" | "about"
+    "mode" | "capture" | "ai" | "privacy" | "integrations" | "storage" | "shortcuts" | "advanced" | "about" | "goals"
   >("mode");
   const [draftSettingsPatch, setDraftSettingsPatch] = useState<Partial<BackendSettings>>({});
   useEffect(() => {
@@ -10175,6 +10341,7 @@ function SettingsView({
     { id: "ai", label: "AI Provider", detail: "Analysis model and routing", icon: "ritual" },
     { id: "storage", label: "Data Storage", detail: "Local data and exports", icon: "archive" },
     { id: "advanced", label: "Advanced", detail: "Storage, exports, bridges, and endpoint", icon: "sliders" },
+    { id: "goals", label: "Daily Goals", detail: "Set time targets per app or project", icon: "ritual" },
   ];
   const checkForSource = (source: "desktop" | "browser" | "editor" | "terminal" | "ai") => {
     const checks = captureHealth?.checks ?? [];
@@ -11012,8 +11179,149 @@ function SettingsView({
               </div>
             </section>
           )}
+          {activeSettings === "goals" && (
+            <section className="settings-section">
+              <div className="settings-section-header">
+                <div>
+                  <span>Daily Goals</span>
+                  <h2>Time targets</h2>
+                </div>
+                <strong>Track daily time goals by app, project path, or category.</strong>
+              </div>
+              <GoalManagerPanel />
+            </section>
+          )}
         </section>
       </div>
+    </div>
+  );
+}
+
+function GoalManagerPanel() {
+  const [goals, setGoals] = useState<BackendDailyGoal[]>([]);
+  const [showAdd, setShowAdd] = useState(false);
+  const [addLabel, setAddLabel] = useState("");
+  const [addType, setAddType] = useState<"app" | "project" | "category">("app");
+  const [addMatch, setAddMatch] = useState("");
+  const [addHours, setAddHours] = useState("2");
+  const [addMinutes, setAddMinutes] = useState("0");
+
+  useEffect(() => {
+    void invokeTauri<BackendDailyGoal[]>("list_daily_goals").then(setGoals).catch(() => null);
+  }, []);
+
+  const save = async () => {
+    const targetMs =
+      (Number(addHours) * 60 + Number(addMinutes)) * 60_000;
+    if (!addLabel.trim() || !addMatch.trim() || targetMs <= 0) return;
+    const created = await invokeTauri<BackendDailyGoal>("create_daily_goal", {
+      input: {
+        label: addLabel.trim(),
+        targetType: addType,
+        matchValue: addMatch.trim(),
+        dailyTargetMs: targetMs,
+      },
+    });
+    setGoals((previous) => [...previous, created]);
+    setAddLabel("");
+    setAddMatch("");
+    setAddHours("2");
+    setAddMinutes("0");
+    setShowAdd(false);
+  };
+
+  const remove = async (id: string) => {
+    await invokeTauri("delete_daily_goal", { id });
+    setGoals((previous) => previous.filter((g) => g.id !== id));
+  };
+
+  return (
+    <div>
+      <div className="goal-settings-list">
+        {goals.length === 0 && (
+          <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
+            No goals yet. Add one below.
+          </span>
+        )}
+        {goals.map((goal) => (
+          <div className="goal-settings-row" key={goal.id}>
+            <div className="goal-settings-info">
+              <span className="goal-settings-name">{goal.label}</span>
+              <span className="goal-settings-detail">
+                {goal.targetType}: {goal.matchValue} · {formatDuration(goal.dailyTargetMs)}/day
+              </span>
+            </div>
+            <button
+              className="button compact"
+              onClick={() => void remove(goal.id)}
+              type="button"
+            >
+              Remove
+            </button>
+          </div>
+        ))}
+      </div>
+      {!showAdd ? (
+        <button className="button compact" onClick={() => setShowAdd(true)} type="button">
+          + Add goal
+        </button>
+      ) : (
+        <div className="goal-add-form">
+          <input
+            placeholder="Label (e.g. Deep work)"
+            value={addLabel}
+            onChange={(e) => setAddLabel(e.target.value)}
+          />
+          <select value={addType} onChange={(e) => setAddType(e.target.value as "app" | "project" | "category")}>
+            <option value="app">App name</option>
+            <option value="project">Project path</option>
+            <option value="category">Category</option>
+          </select>
+          <input
+            placeholder={
+              addType === "app"
+                ? "e.g. Code"
+                : addType === "project"
+                  ? "e.g. /Users/me/myproject"
+                  : "e.g. development"
+            }
+            value={addMatch}
+            onChange={(e) => setAddMatch(e.target.value)}
+          />
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <input
+              aria-label="Hours"
+              placeholder="h"
+              style={{ width: 52 }}
+              type="number"
+              min="0"
+              max="24"
+              value={addHours}
+              onChange={(e) => setAddHours(e.target.value)}
+            />
+            <span style={{ fontSize: 12 }}>h</span>
+            <input
+              aria-label="Minutes"
+              placeholder="m"
+              style={{ width: 52 }}
+              type="number"
+              min="0"
+              max="59"
+              value={addMinutes}
+              onChange={(e) => setAddMinutes(e.target.value)}
+            />
+            <span style={{ fontSize: 12 }}>m / day</span>
+          </div>
+          <div className="goal-add-form-actions">
+            <button className="button compact" onClick={() => setShowAdd(false)} type="button">
+              Cancel
+            </button>
+            <button className="button compact primary" onClick={() => void save()} type="button">
+              Save goal
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
